@@ -232,18 +232,19 @@ Return ONLY JSON (no markdown):
 
 Only change files needed. Return complete file content. If unsafe to implement, return changes:[] and explain in summary.`
 
-  const createParams: Parameters<typeof client.messages.create>[0] = {
-    model,
-    max_tokens: maxTokens,
-    messages: [{ role: 'user', content: prompt }],
-  }
-
   // Only add thinking for complex issues (costs extra tokens)
-  if (useThinking) {
-    createParams.thinking = { type: 'enabled', budget_tokens: 2000 }
-  }
-
-  const response = await client.messages.create(createParams)
+  const response = useThinking
+    ? await client.messages.create({
+        model,
+        max_tokens: maxTokens,
+        thinking: { type: 'enabled', budget_tokens: 2000 },
+        messages: [{ role: 'user', content: prompt }],
+      })
+    : await client.messages.create({
+        model,
+        max_tokens: maxTokens,
+        messages: [{ role: 'user', content: prompt }],
+      })
 
   const text = response.content.find((b) => b.type === 'text')
   if (!text || text.type !== 'text') throw new Error('No response from Claude')
