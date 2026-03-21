@@ -107,3 +107,58 @@ export async function updateIssue(
   }
   if (opts.comment) await addComment(issueId, opts.comment)
 }
+
+export interface LinearIssueRecord {
+  id: string
+  identifier: string
+  title: string
+  description: string | null
+  teamId: string
+  state: { name: string }
+  priority: number
+}
+
+/**
+ * List issues in a team, optionally filtered by cycle and/or state name.
+ * Returns issues ordered by priority.
+ */
+export async function listIssues(opts: {
+  teamId: string
+  cycleId?: string
+  stateName?: string  // e.g. "Todo", "Backlog"
+}): Promise<LinearIssueRecord[]> {
+  // Build filter
+  const filters: string[] = [`team: { id: { eq: "${opts.teamId}" } }`]
+  if (opts.cycleId) filters.push(`cycle: { id: { eq: "${opts.cycleId}" } }`)
+  if (opts.stateName) filters.push(`state: { name: { eq: "${opts.stateName}" } }`)
+
+  const data = await gql(`
+    query ListIssues {
+      issues(
+        filter: { ${filters.join(', ')} }
+        orderBy: priority
+        first: 50
+      ) {
+        nodes {
+          id
+          identifier
+          title
+          description
+          team { id }
+          state { name }
+          priority
+        }
+      }
+    }
+  `)
+
+  return data.issues.nodes.map((n: Record<string, unknown> & { team: { id: string }, state: { name: string } }) => ({
+    id: n.id,
+    identifier: n.identifier,
+    title: n.title,
+    description: n.description || null,
+    teamId: n.team.id,
+    state: n.state,
+    priority: n.priority,
+  }))
+}
