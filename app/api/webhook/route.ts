@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     identifier: data.identifier as string,
     title: data.title as string,
     description: (data.description as string) || null,
-    teamId: (data.team as Record<string, string>)?.id || '',
+    teamId: (data.teamId as string) || (data.team as Record<string, string>)?.id || '',
   }
 
   // Fire async — don't block webhook response
