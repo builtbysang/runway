@@ -125,25 +125,43 @@ export interface LinearIssueRecord {
 export async function listIssues(opts: {
   teamId: string
   cycleId?: string
-  stateName?: string  // e.g. "Todo", "Backlog"
+  stateName?: string
 }): Promise<LinearIssueRecord[]> {
-  // Build filter
+  // When cycleId is given, query via cycle node (issue filter doesn't support cycle reliably)
+  if (opts.cycleId) {
+    const stateFilter = opts.stateName
+      ? `filter: { state: { name: { eq: "${opts.stateName}" } } },`
+      : ''
+    const data = await gql(`
+      query ListCycleIssues {
+        cycle(id: "${opts.cycleId}") {
+          issues(${stateFilter} first: 50) {
+            nodes {
+              id identifier title description
+              team { id }
+              state { name }
+              priority
+            }
+          }
+        }
+      }
+    `)
+    return data.cycle.issues.nodes.map((n: Record<string, unknown> & { team: { id: string }, state: { name: string } }) => ({
+      id: n.id, identifier: n.identifier, title: n.title,
+      description: (n.description as string) || null,
+      teamId: (n.team as { id: string }).id, state: n.state, priority: n.priority as number,
+    }))
+  }
+
+  // No cycleId — filter by team and optionally state
   const filters: string[] = [`team: { id: { eq: "${opts.teamId}" } }`]
-  if (opts.cycleId) filters.push(`cycle: { id: { eq: "${opts.cycleId}" } }`)
   if (opts.stateName) filters.push(`state: { name: { eq: "${opts.stateName}" } }`)
 
   const data = await gql(`
     query ListIssues {
-      issues(
-        filter: { ${filters.join(', ')} }
-        orderBy: priority
-        first: 50
-      ) {
+      issues(filter: { ${filters.join(', ')} }, orderBy: priority, first: 50) {
         nodes {
-          id
-          identifier
-          title
-          description
+          id identifier title description
           team { id }
           state { name }
           priority
@@ -151,14 +169,9 @@ export async function listIssues(opts: {
       }
     }
   `)
-
   return data.issues.nodes.map((n: Record<string, unknown> & { team: { id: string }, state: { name: string } }) => ({
-    id: n.id,
-    identifier: n.identifier,
-    title: n.title,
-    description: n.description || null,
-    teamId: n.team.id,
-    state: n.state,
-    priority: n.priority,
+    id: n.id, identifier: n.identifier, title: n.title,
+    description: (n.description as string) || null,
+    teamId: (n.team as { id: string }).id, state: n.state, priority: n.priority as number,
   }))
 }
