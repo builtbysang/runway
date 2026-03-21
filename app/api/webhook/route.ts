@@ -22,7 +22,7 @@ function verifySignature(body: string, sig: string): boolean {
 
 export async function POST(req: NextRequest) {
   const body = await req.text()
-  const sig = req.headers.get('x-linear-signature') || ''
+  const sig = req.headers.get('linear-signature') || ''
 
   if (!verifySignature(body, sig)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
