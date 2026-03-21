@@ -1,8 +1,10 @@
 # Runway
 
-**AI automation layer for software projects.** Drag a Linear issue to "In Progress" → Claude reads the codebase, implements it, and opens a pull request. No manual prompting required.
+**Context layer for vibe coding.** Runway keeps Claude grounded — it stores your project's goals, tech stack, and conventions in Notion, breaks the work into structured Linear issues, then lets Claude implement each one without losing the plot.
 
-Built on: Next.js · Claude claude-opus-4-6 (adaptive thinking) · Linear · GitHub
+Vibe coding is fast but easy to get lost in. Runway gives it structure: a shared source of truth so every PR moves the project forward instead of sideways.
+
+Built on: Next.js · Claude claude-opus-4-6 · Linear · GitHub · Notion
 
 ---
 
@@ -214,9 +216,11 @@ MIT
 
 ## Tiếng Việt
 
-**Runway** là lớp tự động hóa AI cho các dự án phần mềm. Kéo một issue Linear sang "In Progress" → Claude đọc codebase, tự implement, và mở pull request. Không cần nhập lệnh thủ công.
+**Runway** là context layer cho vibe coding — giải quyết vấn đề code nhanh nhưng hay bị bơi không biết mình đang đi đâu.
 
-Nền tảng: Next.js · Claude claude-opus-4-6 · Linear · GitHub
+Runway lưu mục tiêu, tech stack, và convention của dự án vào Notion làm source of truth. Từ đó chia nhỏ công việc thành các Linear issue có cấu trúc, rồi để Claude implement từng cái một — đúng hướng, không lạc đề, không phải nhắc lại context mỗi lần.
+
+Nền tảng: Next.js · Claude claude-opus-4-6 · Linear · GitHub · Notion
 
 ---
 
