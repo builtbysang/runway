@@ -116,6 +116,15 @@ export interface LinearIssueRecord {
   teamId: string
   state: { name: string }
   priority: number
+  labels: string[]  // label names
+}
+
+/** Fetch label names for a single issue */
+export async function getIssueLabels(issueId: string): Promise<string[]> {
+  const data = await gql(`
+    query { issue(id: "${issueId}") { labels { nodes { name } } } }
+  `)
+  return data.issue.labels.nodes.map((l: { name: string }) => l.name)
 }
 
 /**
@@ -141,15 +150,17 @@ export async function listIssues(opts: {
               team { id }
               state { name }
               priority
+              labels { nodes { name } }
             }
           }
         }
       }
     `)
-    return data.cycle.issues.nodes.map((n: Record<string, unknown> & { team: { id: string }, state: { name: string } }) => ({
+    return data.cycle.issues.nodes.map((n: Record<string, unknown> & { team: { id: string }, state: { name: string }, labels: { nodes: { name: string }[] } }) => ({
       id: n.id, identifier: n.identifier, title: n.title,
       description: (n.description as string) || null,
       teamId: (n.team as { id: string }).id, state: n.state, priority: n.priority as number,
+      labels: n.labels.nodes.map((l) => l.name),
     }))
   }
 
@@ -165,13 +176,15 @@ export async function listIssues(opts: {
           team { id }
           state { name }
           priority
+          labels { nodes { name } }
         }
       }
     }
   `)
-  return data.issues.nodes.map((n: Record<string, unknown> & { team: { id: string }, state: { name: string } }) => ({
+  return data.issues.nodes.map((n: Record<string, unknown> & { team: { id: string }, state: { name: string }, labels: { nodes: { name: string }[] } }) => ({
     id: n.id, identifier: n.identifier, title: n.title,
     description: (n.description as string) || null,
     teamId: (n.team as { id: string }).id, state: n.state, priority: n.priority as number,
+    labels: n.labels.nodes.map((l) => l.name),
   }))
 }

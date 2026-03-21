@@ -4,7 +4,7 @@
  */
 import { implementIssue } from '@/skills/claude'
 import { readFiles, createBranchAndPR } from '@/skills/github'
-import { updateIssue, addComment } from '@/skills/linear'
+import { updateIssue, addComment, getIssueLabels } from '@/skills/linear'
 import { readProjectContext } from '@/skills/notion'
 import projectsConfig from '@/projects.json'
 
@@ -21,6 +21,7 @@ export interface LinearIssue {
   title: string
   description: string | null
   teamId: string
+  labels?: string[]  // Linear label names for complexity detection
 }
 
 function findProjectConfig(teamId: string): ProjectConfig | null {
@@ -78,25 +79,28 @@ export async function runDevAgent(issue: LinearIssue): Promise<void> {
   // 1. Notify Linear we're starting
   await addComment(issue.id, `🤖 **Runway** is analyzing this issue and will start implementing…`)
 
-  // 2. Fetch project context from Notion + source files from GitHub in parallel
-  const [projectContext, files] = await Promise.all([
+  // 2. Fetch labels (if not already provided), Notion context, and GitHub files in parallel
+  const [labels, projectContext, files] = await Promise.all([
+    issue.labels ? Promise.resolve(issue.labels) : getIssueLabels(issue.id),
     config.notionContextPageId
       ? readProjectContext(config.notionContextPageId)
       : Promise.resolve(null),
     readFiles(config.githubRepo, resolveFilePaths(issue), token),
   ])
 
+  console.log(`[Dev Agent] Labels: [${labels.join(', ')}]`)
   if (projectContext) {
     console.log(`[Dev Agent] Loaded Notion context (${projectContext.length} chars)`)
   }
 
-  // 3. Ask Claude to implement (model auto-selected by complexity)
+  // 3. Ask Claude to implement (model auto-selected by complexity + labels)
   const result = await implementIssue({
     issueTitle: issue.title,
     issueDescription: issue.description || '',
     files,
     techStack: config.techStack,
     projectContext: projectContext ?? undefined,
+    labels,
   })
 
   if (result.changes.length === 0) {

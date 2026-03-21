@@ -19,7 +19,15 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 type Complexity = 'simple' | 'normal' | 'complex'
 
-function detectComplexity(title: string, description: string): Complexity {
+// Linear label names that override auto-detection
+const COMPLEX_LABELS = ['complex', 'hard', 'large', 'xl']
+const SIMPLE_LABELS = ['simple', 'easy', 'small', 'xs', 'trivial']
+
+function detectComplexity(title: string, description: string, labels: string[] = []): Complexity {
+  const labelNames = labels.map((l) => l.toLowerCase())
+  if (labelNames.some((l) => COMPLEX_LABELS.includes(l))) return 'complex'
+  if (labelNames.some((l) => SIMPLE_LABELS.includes(l))) return 'simple'
+
   const text = `${title} ${description}`.toLowerCase()
   if (text.includes('[complex]') || text.includes('[hard]')) return 'complex'
   if (!description || description.length < 80) return 'simple'
@@ -197,8 +205,9 @@ export async function implementIssue(opts: {
   files: { path: string; content: string }[]
   techStack?: string
   projectContext?: string   // compressed Notion context (~300 tokens)
+  labels?: string[]         // Linear label names — used for complexity detection
 }): Promise<DevResult> {
-  const complexity = detectComplexity(opts.issueTitle, opts.issueDescription)
+  const complexity = detectComplexity(opts.issueTitle, opts.issueDescription, opts.labels)
   const model = MODELS[complexity]
   const maxTokens = MAX_TOKENS[complexity]
   const useThinking = complexity === 'complex'

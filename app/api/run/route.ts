@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
           title: issue.title,
           description: issue.description,
           teamId: issue.teamId,
+          labels: issue.labels,
         })
       } catch (err) {
         console.error(`[run] Failed ${issue.identifier}:`, err)
