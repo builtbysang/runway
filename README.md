@@ -6,6 +6,10 @@ Built on: Next.js · Claude claude-opus-4-6 (adaptive thinking) · Linear · Git
 
 ---
 
+> 🇻🇳 **[Xem hướng dẫn tiếng Việt bên dưới](#tiếng-việt)**
+
+---
+
 ## What it does
 
 Runway runs as a standalone service between your project management and your codebase. It has two agents:
@@ -205,3 +209,166 @@ You can extend `resolveFilePaths()` in `agents/dev-agent.ts` to match your proje
 ## License
 
 MIT
+
+---
+
+## Tiếng Việt
+
+**Runway** là lớp tự động hóa AI cho các dự án phần mềm. Kéo một issue Linear sang "In Progress" → Claude đọc codebase, tự implement, và mở pull request. Không cần nhập lệnh thủ công.
+
+Nền tảng: Next.js · Claude claude-opus-4-6 · Linear · GitHub
+
+---
+
+### Runway làm gì
+
+Runway chạy như một service độc lập kết nối giữa quản lý dự án và codebase của bạn. Gồm hai agent:
+
+#### Dev Agent
+Tự động kích hoạt khi issue Linear được chuyển sang **"In Progress"**.
+
+```
+Linear "In Progress" → webhook → Claude đọc file → implement → GitHub PR → Linear "In Review"
+```
+
+1. Nhận webhook từ Linear
+2. Claude tự khám phá repo — đọc các file cần thiết qua tool `read_file` / `list_dir`
+3. Implement issue bằng tool `write_file`
+4. Tạo branch + commit + mở PR trên GitHub
+5. Cập nhật issue Linear sang "In Review" kèm link PR và tóm tắt
+
+**Chọn model tự động theo độ phức tạp:**
+- `simple` / `easy` / `xs` → claude-haiku-4-5 (nhanh, rẻ)
+- mặc định → claude-sonnet-4-5
+- `complex` / `hard` / `xl` → claude-opus-4-6 (mạnh nhất)
+
+#### PM Agent
+Gọi qua API với nội dung PRD → tạo roadmap Linear đầy đủ.
+
+```
+Nội dung PRD → Claude phân tích → Linear projects + sprints + issues
+```
+
+---
+
+### Cài đặt
+
+#### 1. Clone & cài dependencies
+
+```bash
+git clone https://github.com/builtbysang/runway.git
+cd runway
+npm install
+```
+
+#### 2. Cấu hình dự án
+
+Sửa `projects.json` để thêm dự án của bạn:
+
+```json
+{
+  "ten-du-an": {
+    "linearTeamId": "linear-team-id-của-bạn",
+    "githubRepo": "org/repo",
+    "description": "Mô tả dự án",
+    "techStack": "Next.js / TypeScript / Tailwind CSS",
+    "notionContextPageId": "notion-page-id (tuỳ chọn)"
+  }
+}
+```
+
+Tìm Linear team ID: Linear → Settings → API → copy team ID.
+
+`notionContextPageId` (tuỳ chọn): ID trang Notion chứa Brief/PRD của dự án. Runway đọc và nén thành context cho Claude (~300 token).
+
+#### 3. Thiết lập biến môi trường
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...
+LINEAR_API_KEY=lin_api_...
+LINEAR_WEBHOOK_SECRET=lin_wh_...
+GITHUB_TOKEN=ghp_...
+NOTION_TOKEN=ntn_...   # tuỳ chọn
+```
+
+#### 4. Deploy lên Vercel
+
+```bash
+vercel deploy --prod
+```
+
+Thêm env vars tại Vercel dashboard → Settings → Environment Variables.
+
+#### 5. Tạo webhook trên Linear
+
+1. Linear → **Settings → API → Webhooks → New Webhook**
+2. URL: `https://runway-url.vercel.app/api/webhook`
+3. Events: chọn **Issues**
+4. Copy signing secret → đặt làm `LINEAR_WEBHOOK_SECRET`
+
+---
+
+### API
+
+#### `POST /api/webhook`
+Nhận webhook từ Linear. Chạy Dev Agent khi issue chuyển sang "In Progress".
+
+#### `POST /api/run`
+Chạy hàng loạt Dev Agent trên nhiều issue cùng lúc (tuần tự).
+
+```bash
+curl -X POST https://runway-url.vercel.app/api/run \
+  -H "Content-Type: application/json" \
+  -d '{
+    "projectKey": "ten-du-an",
+    "stateName": "Todo",
+    "cycleId": "sprint-id (tuỳ chọn)"
+  }'
+```
+
+Runway tự động chuyển từng issue sang "In Progress" rồi implement lần lượt. Trả về kết quả ngay — theo dõi tiến độ trên Linear.
+
+#### `POST /api/plan`
+Tạo roadmap Linear từ PRD.
+
+```bash
+curl -X POST https://runway-url.vercel.app/api/plan \
+  -H "Content-Type: application/json" \
+  -d '{
+    "projectKey": "ten-du-an",
+    "prd": "Chúng tôi đang xây dựng ứng dụng tài chính cá nhân..."
+  }'
+```
+
+---
+
+### Kiến trúc
+
+```
+app/
+  api/
+    webhook/   # Linear webhook → Dev Agent
+    run/       # Chạy hàng loạt issues
+    plan/      # PM Agent
+    projects/  # Quản lý config
+
+agents/
+  dev-agent.ts  # Issue → Claude tool-use loop → PR → Linear update
+  pm-agent.ts   # PRD → Claude → Linear roadmap
+
+skills/
+  claude.ts   # implementIssue(), analyzePRD(), draftDocument()
+  github.ts   # readFile(), readDir(), createBranchAndPR()
+  linear.ts   # createIssue(), updateIssue(), listIssues(), addComment()
+  notion.ts   # readProjectContext() — đọc & cache context từ Notion
+
+projects.json  # Config đa dự án
+```
+
+---
+
+### Giới hạn
+
+- **Vercel Hobby plan:** Tối đa 60s mỗi function — dùng `/api/run` cho các task dài
+- **Issue phức tạp:** Claude hoạt động tốt nhất với ticket được mô tả rõ ràng, tự chứa. Issue mơ hồ sẽ nhận comment giải thích còn thiếu gì
+- **File lớn:** Claude tự quyết định đọc file nào — mô tả issue càng cụ thể càng tốt
