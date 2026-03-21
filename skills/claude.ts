@@ -1,33 +1,34 @@
 /**
  * Runway — Claude API skill
- * PM mode: analyze PRD → generate roadmap JSON
- * Dev mode: analyze issue + files → generate code changes JSON
+ *
+ * Dev mode: agentic tool-use loop
+ *   Claude calls read_file / list_dir / write_file / done tools
+ *   → no pre-fetching files, no JSON parsing, Claude decides what to read
+ *
+ * PM mode: analyze PRD → roadmap JSON (one-shot, sonnet)
+ * Doc mode: draft Brief/PRD markdown (one-shot, sonnet)
  *
  * Token optimization:
- * - Model auto-selected by complexity (haiku → sonnet → opus)
- * - Thinking only enabled for [complex] issues
- * - Files truncated to 200 lines max
+ *   - Tool-use loop: Claude reads only what it needs
+ *   - Model selected by Linear labels (haiku/sonnet/opus)
+ *   - Thinking only for [complex] issues
  */
 import Anthropic from '@anthropic-ai/sdk'
+import { readFile, readDir, createBranchAndPR } from '@/skills/github'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
 // ─── Model selection ──────────────────────────────────────────────────────────
-// haiku  = simple tasks, no description         (~$0.0008/1k tokens)
-// sonnet = default                              (~$0.003/1k tokens)
-// opus   = tagged [complex] or very long desc  (~$0.015/1k tokens)
 
 type Complexity = 'simple' | 'normal' | 'complex'
 
-// Linear label names that override auto-detection
 const COMPLEX_LABELS = ['complex', 'hard', 'large', 'xl']
-const SIMPLE_LABELS = ['simple', 'easy', 'small', 'xs', 'trivial']
+const SIMPLE_LABELS  = ['simple', 'easy', 'small', 'xs', 'trivial']
 
-function detectComplexity(title: string, description: string, labels: string[] = []): Complexity {
-  const labelNames = labels.map((l) => l.toLowerCase())
-  if (labelNames.some((l) => COMPLEX_LABELS.includes(l))) return 'complex'
-  if (labelNames.some((l) => SIMPLE_LABELS.includes(l))) return 'simple'
-
+export function detectComplexity(title: string, description: string, labels: string[] = []): Complexity {
+  const lnames = labels.map(l => l.toLowerCase())
+  if (lnames.some(l => COMPLEX_LABELS.includes(l))) return 'complex'
+  if (lnames.some(l => SIMPLE_LABELS.includes(l)))  return 'simple'
   const text = `${title} ${description}`.toLowerCase()
   if (text.includes('[complex]') || text.includes('[hard]')) return 'complex'
   if (!description || description.length < 80) return 'simple'
@@ -36,39 +37,165 @@ function detectComplexity(title: string, description: string, labels: string[] =
 }
 
 const MODELS: Record<Complexity, string> = {
-  simple: 'claude-haiku-4-5',
-  normal: 'claude-sonnet-4-5',
+  simple:  'claude-haiku-4-5-20251001',
+  normal:  'claude-sonnet-4-5-20251001',
   complex: 'claude-opus-4-6',
 }
 
-const MAX_TOKENS: Record<Complexity, number> = {
-  simple: 2048,
-  normal: 4096,
-  complex: 8192,
+// ─── Tool definitions given to Claude ────────────────────────────────────────
+
+const DEV_TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'read_file',
+    description: 'Read a source file from the GitHub repository. Call this to understand existing code before making changes.',
+    input_schema: {
+      type: 'object' as const,
+      properties: { path: { type: 'string', description: 'Relative file path, e.g. app/page.tsx' } },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'list_dir',
+    description: 'List files and folders inside a directory in the repository.',
+    input_schema: {
+      type: 'object' as const,
+      properties: { path: { type: 'string', description: 'Directory path, e.g. app/ or components/' } },
+      required: ['path'],
+    },
+  },
+  {
+    name: 'write_file',
+    description: 'Stage a file change. Call this once per file you want to create or modify. Use FULL file content.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        path:    { type: 'string', description: 'Relative file path' },
+        content: { type: 'string', description: 'Complete new file content' },
+        reason:  { type: 'string', description: 'One sentence explaining this change' },
+      },
+      required: ['path', 'content', 'reason'],
+    },
+  },
+  {
+    name: 'done',
+    description: 'Signal that you have finished implementing. Call this when all write_file calls are done.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        summary:       { type: 'string', description: 'One paragraph summary of what was implemented' },
+        prDescription: { type: 'string', description: 'PR description in markdown: ## What, ## Why, ## How to test' },
+      },
+      required: ['summary', 'prDescription'],
+    },
+  },
+]
+
+// ─── Dev Agent — agentic tool-use loop ───────────────────────────────────────
+
+export interface DevResult {
+  changes: { path: string; content: string; reason: string }[]
+  summary: string
+  prDescription: string
 }
 
-/** Truncate file content to first N lines, stripping blank-heavy sections */
-function truncateFile(content: string, maxLines = 200): string {
-  const lines = content.split('\n')
-  if (lines.length <= maxLines) return content
-  return lines.slice(0, maxLines).join('\n') + `\n// … (${lines.length - maxLines} more lines)`
+export async function implementIssue(opts: {
+  issueTitle: string
+  issueDescription: string
+  repo: string
+  token: string
+  techStack?: string
+  projectContext?: string
+  labels?: string[]
+}): Promise<DevResult> {
+  const complexity = detectComplexity(opts.issueTitle, opts.issueDescription, opts.labels)
+  const model = MODELS[complexity]
+  console.log(`[Claude] model=${model} complexity=${complexity}`)
+
+  const contextSection = opts.projectContext
+    ? `## Project context\n${opts.projectContext}\n\n`
+    : ''
+
+  const systemPrompt = `You are an expert ${opts.techStack || 'Next.js / TypeScript'} developer implementing a Linear issue.
+
+${contextSection}Use the tools to explore the codebase and implement the task:
+1. Call read_file or list_dir to understand existing code — only read what you need
+2. Call write_file for each file you want to change (full file content, not diffs)
+3. Call done when finished — do NOT call done until all write_file calls are complete
+
+Be surgical: change only what's needed. If you cannot safely implement, call done with no prior write_file calls and explain in summary.`
+
+  const messages: Anthropic.MessageParam[] = [
+    {
+      role: 'user',
+      content: `Implement this issue:\n\n**${opts.issueTitle}**\n\n${opts.issueDescription || '(no description)'}`,
+    },
+  ]
+
+  const changes: DevResult['changes'] = []
+  let summary = ''
+  let prDescription = ''
+  let iterations = 0
+  const MAX_ITER = 20 // safety limit
+
+  while (iterations++ < MAX_ITER) {
+    const response = await client.messages.create({
+      model,
+      max_tokens: 8192,
+      system: systemPrompt,
+      tools: DEV_TOOLS,
+      messages,
+    })
+
+    // Append assistant turn
+    messages.push({ role: 'assistant', content: response.content })
+
+    if (response.stop_reason === 'end_turn') break
+
+    if (response.stop_reason === 'tool_use') {
+      const toolUseBlocks = response.content.filter(b => b.type === 'tool_use') as Anthropic.ToolUseBlock[]
+      const toolResults: Anthropic.ToolResultBlockParam[] = []
+
+      for (const block of toolUseBlocks) {
+        const input = block.input as Record<string, string>
+        let result = ''
+
+        if (block.name === 'read_file') {
+          console.log(`[Claude] read_file: ${input.path}`)
+          const file = await readFile(opts.repo, input.path, opts.token)
+          result = file ? file.content : `File not found: ${input.path}`
+        }
+
+        else if (block.name === 'list_dir') {
+          console.log(`[Claude] list_dir: ${input.path}`)
+          const entries = await readDir(opts.repo, input.path, opts.token)
+          result = entries.length > 0 ? entries.join('\n') : `Empty or not found: ${input.path}`
+        }
+
+        else if (block.name === 'write_file') {
+          console.log(`[Claude] write_file: ${input.path}`)
+          changes.push({ path: input.path, content: input.content, reason: input.reason })
+          result = `Staged: ${input.path}`
+        }
+
+        else if (block.name === 'done') {
+          summary = input.summary
+          prDescription = input.prDescription
+          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Done acknowledged.' })
+          messages.push({ role: 'user', content: toolResults })
+          return { changes, summary, prDescription }
+        }
+
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result })
+      }
+
+      messages.push({ role: 'user', content: toolResults })
+    }
+  }
+
+  return { changes, summary: summary || 'Implementation loop ended without done signal.', prDescription }
 }
 
-// ─── PM Agent ─────────────────────────────────────────────────────────────────
-
-export interface Sprint {
-  name: string
-  goal: string
-  startWeek: number
-  durationWeeks: number
-  issues: {
-    title: string
-    description: string
-    priority: 1 | 2 | 3 | 4
-    estimate: number
-    epic: string
-  }[]
-}
+// ─── PM Agent ────────────────────────────────────────────────────────────────
 
 export interface Roadmap {
   projectName: string
@@ -76,14 +203,19 @@ export interface Roadmap {
   releases: {
     name: string
     description: string
-    sprints: Sprint[]
+    sprints: {
+      name: string
+      goal: string
+      startWeek: number
+      durationWeeks: number
+      issues: { title: string; description: string; priority: 1|2|3|4; estimate: number; epic: string }[]
+    }[]
   }[]
 }
 
 export async function analyzePRD(prd: string): Promise<Roadmap> {
-  // PRD analysis always uses sonnet — complex enough but no need for opus
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-5',
+    model: 'claude-sonnet-4-5-20251001',
     max_tokens: 6000,
     messages: [{
       role: 'user',
@@ -93,34 +225,13 @@ PRD:
 ${prd}
 
 JSON shape:
-{
-  "projectName": "string",
-  "projectDescription": "string",
-  "releases": [{
-    "name": "Release 1 — MVP",
-    "description": "string",
-    "sprints": [{
-      "name": "Sprint 1",
-      "goal": "string",
-      "startWeek": 0,
-      "durationWeeks": 2,
-      "issues": [{
-        "title": "string",
-        "description": "acceptance criteria",
-        "priority": 2,
-        "estimate": 3,
-        "epic": "string"
-      }]
-    }]
-  }]
-}
+{"projectName":"string","projectDescription":"string","releases":[{"name":"Release 1 — MVP","description":"string","sprints":[{"name":"Sprint 1","goal":"string","startWeek":0,"durationWeeks":2,"issues":[{"title":"string","description":"acceptance criteria","priority":2,"estimate":3,"epic":"string"}]}]}]}
 
 Rules: R1=MVP only, R2=Growth, max 8 issues/sprint, priority 1-4 (1=P0), estimate in story points.`,
     }],
   })
-
-  const text = response.content.find((b) => b.type === 'text')
-  if (!text || text.type !== 'text') throw new Error('No response from Claude')
+  const text = response.content.find(b => b.type === 'text')
+  if (!text || text.type !== 'text') throw new Error('No response')
   const raw = text.text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
   return JSON.parse(raw) as Roadmap
 }
@@ -128,135 +239,23 @@ Rules: R1=MVP only, R2=Growth, max 8 issues/sprint, priority 1-4 (1=P0), estimat
 // ─── Doc Agent ────────────────────────────────────────────────────────────────
 
 export type DocType = 'brief' | 'prd'
+export interface DocumentDraft { title: string; docType: DocType; markdown: string }
 
-export interface DocumentDraft {
-  title: string
-  docType: DocType
-  markdown: string
-}
-
-export async function draftDocument(opts: {
-  context: string
-  docType: DocType
-}): Promise<DocumentDraft> {
-  const isBrief = opts.docType === 'brief'
-
-  const structure = isBrief
-    ? `# [Project Name]
-**Status:** Draft | **Date:** ${new Date().toISOString().slice(0, 10)}
-## The Problem
-## Why Now
-## Proposed Solution
-## Target Users
-## Success Metrics
-## Scope (In / Out)
-## Constraints & Dependencies
-## Open Questions`
-    : `# [Feature] — PRD
-**Status:** Draft | **Created:** ${new Date().toISOString().slice(0, 10)}
-## TL;DR
-## 1. Background & Problem
-## 2. Goals & Non-Goals + Success Metrics table
-## 3. User Stories & Acceptance Criteria + Functional Requirements table
-## 4. Design (Key Flows, States)
-## 5. Technical Considerations
-## 6. Launch Plan
-## 7. Open Questions`
-
+export async function draftDocument(opts: { context: string; docType: DocType }): Promise<DocumentDraft> {
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-5',
+    model: 'claude-sonnet-4-5-20251001',
     max_tokens: 4096,
     messages: [{
       role: 'user',
-      content: `Write a ${isBrief ? 'Project Brief' : 'PRD'} from this context. Return ONLY JSON: {"title":"string","markdown":"string"}
-
-Structure to follow:
-${structure}
+      content: `Write a ${opts.docType === 'brief' ? 'Project Brief' : 'PRD'} from this context. Return ONLY JSON: {"title":"string","markdown":"string"}
 
 Context:
 ${opts.context}`,
     }],
   })
-
-  const text = response.content.find((b) => b.type === 'text')
-  if (!text || text.type !== 'text') throw new Error('No response from Claude')
+  const text = response.content.find(b => b.type === 'text')
+  if (!text || text.type !== 'text') throw new Error('No response')
   const raw = text.text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
   const parsed = JSON.parse(raw) as { title: string; markdown: string }
   return { title: parsed.title, docType: opts.docType, markdown: parsed.markdown }
-}
-
-// ─── Dev Agent ────────────────────────────────────────────────────────────────
-
-export interface CodeChange {
-  path: string
-  content: string
-  reason: string
-}
-
-export interface DevResult {
-  changes: CodeChange[]
-  summary: string
-  prDescription: string
-}
-
-export async function implementIssue(opts: {
-  issueTitle: string
-  issueDescription: string
-  files: { path: string; content: string }[]
-  techStack?: string
-  projectContext?: string   // compressed Notion context (~300 tokens)
-  labels?: string[]         // Linear label names — used for complexity detection
-}): Promise<DevResult> {
-  const complexity = detectComplexity(opts.issueTitle, opts.issueDescription, opts.labels)
-  const model = MODELS[complexity]
-  const maxTokens = MAX_TOKENS[complexity]
-  const useThinking = complexity === 'complex'
-
-  console.log(`[Claude] model=${model} complexity=${complexity} thinking=${useThinking}`)
-
-  // Truncate files to save tokens
-  const fileContext = opts.files
-    .map((f) => `### ${f.path}\n\`\`\`\n${truncateFile(f.content)}\n\`\`\``)
-    .join('\n\n')
-
-  const contextSection = opts.projectContext
-    ? `## Project context\n${opts.projectContext}\n\n`
-    : ''
-
-  const prompt = `You are an expert ${opts.techStack || 'Next.js / TypeScript'} developer.
-
-${contextSection}## Task
-**${opts.issueTitle}**
-${opts.issueDescription ? `\n${opts.issueDescription}` : ''}
-
-## Files
-${fileContext || '(none provided)'}
-
-Return ONLY JSON (no markdown):
-{
-  "changes": [{"path": "file.tsx", "content": "FULL file content", "reason": "one sentence"}],
-  "summary": "one paragraph",
-  "prDescription": "## What\\n...\\n## Why\\n...\\n## How to test\\n..."
-}
-
-Only change files needed. Return complete file content. If unsafe to implement, return changes:[] and explain in summary.`
-
-  // Only add thinking for complex issues (costs extra tokens)
-  const response = useThinking
-    ? await client.messages.create({
-        model,
-        max_tokens: maxTokens,
-        thinking: { type: 'enabled', budget_tokens: 2000 },
-        messages: [{ role: 'user', content: prompt }],
-      })
-    : await client.messages.create({
-        model,
-        max_tokens: maxTokens,
-        messages: [{ role: 'user', content: prompt }],
-      })
-
-  const text = response.content.find((b) => b.type === 'text')
-  if (!text || text.type !== 'text') throw new Error('No response from Claude')
-  const raw = text.text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
-  return JSON.parse(raw) as DevResult
 }

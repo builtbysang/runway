@@ -26,6 +26,17 @@ export async function readFile(repo: string, path: string, token: string) {
   }
 }
 
+/** List files/folders in a directory — returns "type name" per line */
+export async function readDir(repo: string, path: string, token: string): Promise<string[]> {
+  const res = await fetch(`${GITHUB_API}/repos/${repo}/contents/${path}`, {
+    headers: headers(token),
+  })
+  if (!res.ok) return []
+  const data = await res.json()
+  if (!Array.isArray(data)) return []
+  return data.map((item: { type: string; name: string }) => `${item.type} ${item.name}`)
+}
+
 export async function readFiles(repo: string, paths: string[], token: string) {
   const results = await Promise.all(paths.map((p) => readFile(repo, p, token)))
   return results.filter(Boolean) as { path: string; content: string; sha: string }[]

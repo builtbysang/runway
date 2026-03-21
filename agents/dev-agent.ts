@@ -1,9 +1,12 @@
 /**
  * Runway — Dev Agent
- * Linear issue "In Progress" → Claude implements → GitHub PR → Linear "In Review"
+ * Linear issue "In Progress" → Claude (tool-use loop) → GitHub PR → Linear "In Review"
+ *
+ * Claude uses read_file / list_dir / write_file tools to autonomously explore
+ * the codebase and implement — no manual file pre-fetching needed.
  */
 import { implementIssue } from '@/skills/claude'
-import { readFiles, createBranchAndPR } from '@/skills/github'
+import { createBranchAndPR } from '@/skills/github'
 import { updateIssue, addComment, getIssueLabels } from '@/skills/linear'
 import { readProjectContext } from '@/skills/notion'
 import projectsConfig from '@/projects.json'
@@ -21,50 +24,11 @@ export interface LinearIssue {
   title: string
   description: string | null
   teamId: string
-  labels?: string[]  // Linear label names for complexity detection
+  labels?: string[]
 }
 
 function findProjectConfig(teamId: string): ProjectConfig | null {
-  return Object.values(projectsConfig).find((p) => p.linearTeamId === teamId) || null
-}
-
-/**
- * Resolve which source files to read from GitHub based on issue keywords.
- * Keeps the list tight — every extra file costs tokens.
- */
-function resolveFilePaths(issue: LinearIssue): string[] {
-  const base = ['app/page.tsx', 'package.json']
-  const text = `${issue.title} ${issue.description || ''}`.toLowerCase()
-  const extra: string[] = []
-
-  // Asset / account features
-  if (text.includes('tài khoản') || text.includes('account') || text.includes('bank')) {
-    extra.push('app/accounts/page.tsx', 'components/account-list.tsx')
-  }
-  if (text.includes('quỹ') || text.includes('fund') || text.includes('invest')) {
-    extra.push('app/invest/page.tsx', 'components/investments-table.tsx')
-  }
-  if (text.includes('tài sản') || text.includes('asset') || text.includes('net worth')) {
-    extra.push('app/assets/page.tsx', 'components/asset-summary.tsx')
-  }
-  if (text.includes('snapshot') || text.includes('chart') || text.includes('history')) {
-    extra.push('components/net-worth-chart.tsx')
-  }
-  // General UI
-  if (text.includes('nav') || text.includes('menu') || text.includes('sidebar')) {
-    extra.push('components/nav.tsx')
-  }
-  if (text.includes('onboard')) {
-    extra.push('components/onboarding-wizard.tsx')
-  }
-  if (text.includes('debt')) {
-    extra.push('app/debt/page.tsx')
-  }
-  if (text.includes('goal') || text.includes('mục tiêu')) {
-    extra.push('app/goals/page.tsx')
-  }
-
-  return [...new Set([...base, ...extra])]
+  return Object.values(projectsConfig).find(p => p.linearTeamId === teamId) || null
 }
 
 export async function runDevAgent(issue: LinearIssue): Promise<void> {
@@ -76,42 +40,36 @@ export async function runDevAgent(issue: LinearIssue): Promise<void> {
     return
   }
 
-  // 1. Notify Linear we're starting
+  // 1. Notify Linear
   await addComment(issue.id, `🤖 **Runway** is analyzing this issue and will start implementing…`)
 
-  // 2. Fetch labels (if not already provided), Notion context, and GitHub files in parallel
-  const [labels, projectContext, files] = await Promise.all([
+  // 2. Fetch labels + Notion context in parallel (both optional)
+  const [labels, projectContext] = await Promise.all([
     issue.labels ? Promise.resolve(issue.labels) : getIssueLabels(issue.id),
     config.notionContextPageId
       ? readProjectContext(config.notionContextPageId)
       : Promise.resolve(null),
-    readFiles(config.githubRepo, resolveFilePaths(issue), token),
   ])
 
-  console.log(`[Dev Agent] Labels: [${labels.join(', ')}]`)
-  if (projectContext) {
-    console.log(`[Dev Agent] Loaded Notion context (${projectContext.length} chars)`)
-  }
+  console.log(`[Dev Agent] ${issue.identifier} labels=[${labels.join(', ')}]`)
 
-  // 3. Ask Claude to implement (model auto-selected by complexity + labels)
+  // 3. Claude agentic loop — reads files itself via tools, stages changes
   const result = await implementIssue({
     issueTitle: issue.title,
     issueDescription: issue.description || '',
-    files,
+    repo: config.githubRepo,
+    token,
     techStack: config.techStack,
     projectContext: projectContext ?? undefined,
     labels,
   })
 
   if (result.changes.length === 0) {
-    await addComment(
-      issue.id,
-      `⚠️ **Runway** couldn't implement this automatically:\n\n${result.summary}`
-    )
+    await addComment(issue.id, `⚠️ **Runway** couldn't implement this automatically:\n\n${result.summary}`)
     return
   }
 
-  // 4. Create branch + PR on GitHub
+  // 4. Create branch + PR
   const branchName = `runway/${issue.identifier.toLowerCase()}-${Date.now()}`
   const pr = await createBranchAndPR({
     repo: config.githubRepo,
@@ -123,7 +81,7 @@ export async function runDevAgent(issue: LinearIssue): Promise<void> {
     token,
   })
 
-  // 5. Update Linear: In Review + PR link
+  // 5. Linear → In Review + PR link
   await updateIssue(issue.id, {
     statusName: 'In Review',
     teamId: issue.teamId,
