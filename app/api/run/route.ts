@@ -11,7 +11,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { runDevAgent } from '@/agents/dev-agent'
-import { listIssues } from '@/skills/linear'
+import { listIssues, updateIssue } from '@/skills/linear'
 import projectsConfig from '@/projects.json'
 
 type ProjectKey = keyof typeof projectsConfig
@@ -53,6 +53,8 @@ export async function POST(req: NextRequest) {
     for (const issue of issues) {
       console.log(`[run] Processing ${issue.identifier}: ${issue.title}`)
       try {
+        // Auto-move to "In Progress" so user can track in Linear
+        await updateIssue(issue.id, { statusName: 'In Progress', teamId: issue.teamId })
         await runDevAgent({
           id: issue.id,
           identifier: issue.identifier,

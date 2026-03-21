@@ -4,6 +4,6 @@
     "githubRepo": "builtbysang/wealth-next",
     "description": "Vietnamese personal finance & asset tracking app",
     "techStack": "Next.js 15 / TypeScript / Tailwind CSS 4 / Supabase",
-    "notionContextPageId": ""
+    "notionContextPageId": "32a96f58d33480b29667c8de36c2d76b"
   }
 }
