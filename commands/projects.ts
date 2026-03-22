@@ -4,6 +4,7 @@ export interface AddProjectOptions {
   key: string
   linearTeamId: string
   githubRepo: string
+  localRepoPath?: string
   description?: string
   techStack?: string
   notionContextPageId?: string
@@ -19,6 +20,7 @@ export function addProjectCommand(options: AddProjectOptions) {
   config[options.key] = {
     linearTeamId: options.linearTeamId,
     githubRepo: options.githubRepo,
+    localRepoPath: options.localRepoPath,
     description: options.description,
     techStack: options.techStack,
     notionContextPageId: options.notionContextPageId,

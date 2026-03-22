@@ -83,13 +83,16 @@ export async function readFiles(repo: string, paths: string[], token: string) {
   return results.filter(Boolean) as { path: string; content: string; sha: string }[]
 }
 
-async function getMainSHA(repo: string, token: string) {
+async function getDefaultBranch(repo: string, token: string) {
   const repoRes = await fetch(`${GITHUB_API}/repos/${repo}`, {
     headers: headers(token),
   })
   const repoData = await repoRes.json() as GitHubRepositoryResponse
-  const defaultBranch = repoData.default_branch || 'main'
+  return repoData.default_branch || 'main'
+}
 
+async function getMainSHA(repo: string, token: string) {
+  const defaultBranch = await getDefaultBranch(repo, token)
   const res = await fetch(`${GITHUB_API}/repos/${repo}/git/ref/heads/${defaultBranch}`, {
     headers: headers(token),
   })
@@ -136,6 +139,7 @@ export async function createBranchAndPR(opts: {
   prBody: string
   token: string
 }) {
+  const defaultBranch = await getDefaultBranch(opts.repo, opts.token)
   await createBranch(opts.repo, opts.branchName, opts.token)
   for (const file of opts.changes) {
     await commitFile(opts.repo, opts.branchName, file, opts.commitMessage, opts.token)
@@ -147,7 +151,7 @@ export async function createBranchAndPR(opts: {
       title: opts.prTitle,
       body: opts.prBody,
       head: opts.branchName,
-      base: 'main',
+      base: defaultBranch,
     }),
   })
   const pr = await res.json() as GitHubPullRequestResponse

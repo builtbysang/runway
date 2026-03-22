@@ -1,5 +1,7 @@
 # Runway
 
+[Tiếng Việt](./README.vi.md)
+
 Runway is a local-first agent runtime for software projects.
 
 It connects product intake, Linear planning, GitHub implementation, optional Notion sync, and Figma-aware issue drafting in one CLI-first workflow. This repo no longer runs as a webhook-driven web app. There is no automatic "Linear In Progress -> code immediately" behavior in the current version.
@@ -35,7 +37,7 @@ Runway currently has three main agent layers plus support workflows:
   - `plan`: turns a PRD into a roadmap using `phase -> release -> sprint -> issue`
   - `refine`: upgrades issue descriptions, estimates, complexity, and workstream
   - `report`: generates a markdown progress report from Linear
-  - `syncNotion`: writes a status snapshot into Notion when you explicitly run it
+  - `syncNotion`: writes a status snapshot into Notion only when you explicitly run it
 
 - `Dev Agent`
   - implements approved issues
@@ -62,7 +64,7 @@ The old `Next.js` and webhook layer has been removed. The current architecture i
 
 - `Node.js 20.x`
 - `npm`
-- LLM API access via `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
+- a local authenticated LLM CLI: `codex` or `claude`
 - Linear API access via `LINEAR_API_KEY`
 - GitHub API access via `GITHUB_TOKEN`
 - Optional Notion API access via `NOTION_TOKEN`
@@ -86,6 +88,7 @@ Example:
   "your-project": {
     "linearTeamId": "your-linear-team-id",
     "githubRepo": "yourorg/your-repo",
+    "localRepoPath": "/absolute/path/to/your/local/repo",
     "description": "What this project does",
     "techStack": "TypeScript / Node.js",
     "notionContextPageId": "optional-notion-context-page-id",
@@ -98,6 +101,7 @@ Field reference:
 
 - `linearTeamId`: Linear team ID used for issues, cycles, labels, and projects
 - `githubRepo`: GitHub repo in `owner/name` format
+- `localRepoPath`: optional but recommended absolute path to the local codebase that Dev Agent should edit through Codex or Claude
 - `description`: human-readable project label used in reports
 - `techStack`: short context string passed into the LLM
 - `notionContextPageId`: optional Notion page ID used for compressed read-only project context
@@ -108,13 +112,6 @@ Field reference:
 Create `.env.local`:
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...
-OPENAI_API_KEY=sk-... # optional if using OpenAI / Codex
-RUNWAY_LLM_PROVIDER=anthropic # or openai
-RUNWAY_OPENAI_DEV_MODEL_SIMPLE=gpt-5.1-codex-mini
-RUNWAY_OPENAI_DEV_MODEL_NORMAL=gpt-5.1-codex-mini
-RUNWAY_OPENAI_DEV_MODEL_COMPLEX=gpt-5.1-codex
-RUNWAY_OPENAI_TEXT_MODEL=gpt-5-mini
 LINEAR_API_KEY=lin_api_...
 GITHUB_TOKEN=ghp_...
 NOTION_TOKEN=secret_... # optional
@@ -122,11 +119,13 @@ NOTION_TOKEN=secret_... # optional
 
 Notes:
 
-- Set either `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`.
-- `RUNWAY_LLM_PROVIDER` lets you force `anthropic` or `openai`.
+- You can keep `LINEAR_API_KEY`, `GITHUB_TOKEN`, and `NOTION_TOKEN` in one place and switch only the LLM backend.
+- `RUNWAY_LLM_PROVIDER` still works, but the easiest way to switch is via the provided npm scripts.
+- Runway uses the local authenticated CLI session. It does not call OpenAI or Anthropic APIs directly anymore.
 - `GITHUB_TOKEN` needs write access if you want Runway to open PRs.
 - `LINEAR_API_KEY` should be able to read and write issues, comments, labels, cycles, and projects.
 - `NOTION_TOKEN` is optional. If it is missing, Runway skips Notion context enrichment and Notion sync.
+- Markdown files are the recommended default output for reports and status snapshots.
 
 ## Development commands
 
@@ -134,6 +133,8 @@ During development:
 
 ```bash
 npm run dev -- <command>
+npm run dev:codex -- <command>
+npm run dev:claude -- <command>
 ```
 
 After compiling:
@@ -146,10 +147,77 @@ npm start -- <command>
 Quick sanity checks:
 
 ```bash
+npm run dev -- doctor
+npm run dev:codex -- doctor
+npm run dev:claude -- doctor
+npm run dev -- write-report --project your-project
 npm run check
 npm run build
 npm run dev -- help
 ```
+
+## Using with Codex or Claude
+
+Recommended operator flow when a user sends a brief or a Figma link:
+
+1. Run `product-intake` first.
+2. Review the created issues in Linear.
+3. Add or adjust the Figma link on the issue if needed.
+4. Optionally run `refine` on the issues you want to improve.
+5. Only run `run` when you explicitly want code to be generated.
+
+If you are using Codex:
+
+```bash
+cp .env.example .env.local
+```
+
+Then set:
+
+```bash
+LINEAR_API_KEY=lin_api_...
+GITHUB_TOKEN=ghp_...
+```
+
+And make sure `codex` is installed and already logged in on this machine.
+
+If you are using Claude Code:
+
+```bash
+cp .env.example .env.local
+```
+
+Then set:
+
+```bash
+LINEAR_API_KEY=lin_api_...
+GITHUB_TOKEN=ghp_...
+```
+
+And make sure `claude` is installed and already logged in on this machine.
+If Claude still fails on the first real run with a 401, refresh the local session with `claude auth login` even if `claude auth status` looks healthy.
+
+Fast switching:
+
+```bash
+npm run dev:codex -- doctor
+npm run dev:claude -- doctor
+```
+
+Examples:
+
+```bash
+npm run dev:codex -- product-intake --project your-project --brief-file ./docs/brief.md
+npm run dev:claude -- run --project your-project --issues BUI-123
+```
+
+Before your first real run, use:
+
+```bash
+npm run dev -- doctor
+```
+
+That will tell you which required credentials are still missing.
 
 ## Command reference
 
@@ -181,6 +249,17 @@ Use this when you want:
 - draft issues on Linear that you can review manually
 
 This command does not code anything.
+
+### `doctor`
+
+Check whether the current environment is actually ready to run Runway.
+
+```bash
+npm run dev -- doctor
+```
+
+This is especially useful when setting up Runway for Codex or Claude on a new machine or shell session.
+It checks command availability, basic login status, required API tokens, and whether your project is linked to a local repo path.
 
 ### `plan`
 
@@ -290,11 +369,40 @@ Returns JSON with:
 - `stats`
 - `report`
 
-The `report` field is ready to paste into Notion, Slack, or a PR.
+The `report` field is ready to paste into a markdown file, Notion, Slack, or a PR.
+
+### `write-report`
+
+Write the generated markdown report to a `.md` file. This is the recommended default instead of syncing Notion.
+
+```bash
+npm run dev -- write-report --project your-project
+```
+
+Write to a custom file:
+
+```bash
+npm run dev -- write-report \
+  --project your-project \
+  --cycle sprint-id \
+  --output docs/reports/sprint-12.md
+```
+
+By default this writes to:
+
+```text
+docs/reports/<project>.md
+```
+
+or:
+
+```text
+docs/reports/<project>-<cycleId>.md
+```
 
 ### `sync-notion`
 
-Write a status snapshot into Notion when you explicitly want it.
+Write a status snapshot into Notion only when you explicitly want it.
 
 ```bash
 npm run dev -- sync-notion --project your-project
@@ -308,7 +416,7 @@ npm run dev -- sync-notion \
   --page-id your-notion-page-id
 ```
 
-This command is manual by design so you do not spend tokens syncing Notion continuously.
+This command is manual by design so you do not spend tokens syncing Notion continuously. Prefer `write-report` for the default workflow.
 
 ### `sprint-review`
 

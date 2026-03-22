@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 export interface ProjectConfig {
   linearTeamId: string
   githubRepo: string
+  localRepoPath?: string
   description?: string
   techStack?: string
   notionContextPageId?: string

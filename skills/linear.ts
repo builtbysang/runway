@@ -193,7 +193,7 @@ export async function listIssues(opts: {
 
   const data = await gql(`
     query ListIssues {
-      issues(filter: { ${filters.join(', ')} }, orderBy: priority, first: 50) {
+      issues(filter: { ${filters.join(', ')} }, first: 50) {
         nodes {
           id identifier title description
           team { id }
@@ -222,7 +222,7 @@ export async function listIssues(opts: {
     description: n.description || null,
     teamId: n.team.id, state: n.state, priority: n.priority,
     labels: n.labels.nodes.map((l) => l.name),
-  }))
+  })).sort((a, b) => a.priority - b.priority)
 }
 
 /** Fetch a single issue with full details (including estimate) */

@@ -1,32 +1,25 @@
 /**
- * Runway — Claude API skill
+ * Runway — local CLI LLM skill
  *
- * Dev mode: agentic tool-use loop
- *   Claude calls read_file / list_dir / write_file / done tools
- *   → no pre-fetching files, no JSON parsing, Claude decides what to read
+ * Runway now uses local authenticated agent CLIs instead of direct LLM APIs:
+ * - Codex CLI
+ * - Claude Code CLI
  *
- * PM mode: analyze PRD → roadmap JSON (one-shot, sonnet)
- * Doc mode: draft Brief/PRD markdown (one-shot, sonnet)
- *
- * Token optimization:
- *   - Tool-use loop: Claude reads only what it needs
- *   - Model selected by Linear labels (haiku/sonnet/opus)
- *   - Thinking only for [complex] issues
+ * PM/Product flows use one-shot structured generation.
+ * Dev flow runs the selected CLI inside a temporary repo workspace, then
+ * captures the resulting file diff to open a PR through GitHub.
  */
-import Anthropic from '@anthropic-ai/sdk'
-import { readFile, readDir } from './github'
-import { fetchLogoSvg, searchLogos } from './thesvg'
-
-const anthropicClient = process.env.ANTHROPIC_API_KEY
-  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-  : null
-const OPENAI_CHAT_COMPLETIONS_URL = 'https://api.openai.com/v1/chat/completions'
+import { spawn, spawnSync } from 'node:child_process'
+import { mkdtemp, readFile as readLocalFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+import { readDir } from './github'
 
 // ─── Model selection ──────────────────────────────────────────────────────────
 
 type Complexity = 'simple' | 'normal' | 'complex'
 export type Workstream = 'frontend' | 'backend' | 'fullstack'
-type LlmProvider = 'anthropic' | 'openai'
+type LlmProvider = 'codex-cli' | 'claude-cli'
 
 const COMPLEX_LABELS = ['complex', 'hard', 'large', 'xl']
 const SIMPLE_LABELS  = ['simple', 'easy', 'small', 'xs', 'trivial']
@@ -42,178 +35,251 @@ export function detectComplexity(title: string, description: string, labels: str
   return 'normal'
 }
 
-const ANTHROPIC_MODELS: Record<Complexity, string> = {
-  simple: 'claude-haiku-4-5-20251001',
-  normal: 'claude-sonnet-4-5-20251001',
-  complex: 'claude-opus-4-6',
+const CODEX_DEV_MODELS: Record<Complexity, string> = {
+  simple: process.env.RUNWAY_CODEX_DEV_MODEL_SIMPLE || 'gpt-5.1-codex-mini',
+  normal: process.env.RUNWAY_CODEX_DEV_MODEL_NORMAL || 'gpt-5.1-codex-mini',
+  complex: process.env.RUNWAY_CODEX_DEV_MODEL_COMPLEX || 'gpt-5.1-codex',
 }
 
-const OPENAI_DEV_MODELS: Record<Complexity, string> = {
-  simple: process.env.RUNWAY_OPENAI_DEV_MODEL_SIMPLE || 'gpt-5.1-codex-mini',
-  normal: process.env.RUNWAY_OPENAI_DEV_MODEL_NORMAL || 'gpt-5.1-codex-mini',
-  complex: process.env.RUNWAY_OPENAI_DEV_MODEL_COMPLEX || 'gpt-5.1-codex',
+const CLAUDE_DEV_MODELS: Record<Complexity, string> = {
+  simple: process.env.RUNWAY_CLAUDE_DEV_MODEL_SIMPLE || 'sonnet',
+  normal: process.env.RUNWAY_CLAUDE_DEV_MODEL_NORMAL || 'sonnet',
+  complex: process.env.RUNWAY_CLAUDE_DEV_MODEL_COMPLEX || 'opus',
 }
 
-const DEV_MAX_TOKENS: Record<Complexity, number> = {
-  simple: 2400,
-  normal: 4200,
-  complex: 6400,
+const DEFAULT_READ_ONLY_SCHEMA = {
+  type: 'object',
+  additionalProperties: true,
+} as const
+
+function commandExists(command: string): boolean {
+  const result = spawnSync(command, ['--version'], { stdio: 'ignore' })
+  return result.status === 0
 }
-
-const DEV_MAX_ITERATIONS: Record<Complexity, number> = {
-  simple: 8,
-  normal: 12,
-  complex: 16,
-}
-
-// ─── Tool definitions given to Claude ────────────────────────────────────────
-
-type ToolSchema = {
-  type: 'object'
-  properties: Record<string, { type: string; description: string }>
-  required: string[]
-}
-
-type DevToolDefinition = {
-  name: string
-  description: string
-  input_schema: ToolSchema
-}
-
-const DEV_TOOLS: DevToolDefinition[] = [
-  {
-    name: 'read_file',
-    description: 'Read a source file from the GitHub repository. Call this to understand existing code before making changes.',
-    input_schema: {
-      type: 'object' as const,
-      properties: { path: { type: 'string', description: 'Relative file path, e.g. app/page.tsx' } },
-      required: ['path'],
-    },
-  },
-  {
-    name: 'list_dir',
-    description: 'List files and folders inside a directory in the repository.',
-    input_schema: {
-      type: 'object' as const,
-      properties: { path: { type: 'string', description: 'Directory path, e.g. app/ or components/' } },
-      required: ['path'],
-    },
-  },
-  {
-    name: 'write_file',
-    description: 'Stage a file change. Call this once per file you want to create or modify. Use FULL file content.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        path:    { type: 'string', description: 'Relative file path' },
-        content: { type: 'string', description: 'Complete new file content' },
-        reason:  { type: 'string', description: 'One sentence explaining this change' },
-      },
-      required: ['path', 'content', 'reason'],
-    },
-  },
-  {
-    name: 'done',
-    description: 'Signal that you have finished implementing. Call this when all write_file calls are done.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        summary:       { type: 'string', description: 'One paragraph summary of what was implemented' },
-        prDescription: { type: 'string', description: 'PR description in markdown: ## What, ## Why, ## How to test' },
-      },
-      required: ['summary', 'prDescription'],
-    },
-  },
-  {
-    name: 'search_logo',
-    description: 'Search theSVG for a brand or product logo before adding SVG assets to the implementation.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        query: { type: 'string', description: 'Brand or product name, e.g. github or openai' },
-      },
-      required: ['query'],
-    },
-  },
-  {
-    name: 'fetch_logo_svg',
-    description: 'Fetch a raw SVG logo from theSVG using a known slug and optional variant.',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        slug: { type: 'string', description: 'theSVG slug, e.g. github' },
-        variant: { type: 'string', description: 'Variant key, usually default, mono, light, dark, wordmark' },
-      },
-      required: ['slug'],
-    },
-  },
-]
 
 function getLlmProvider(): LlmProvider {
   const configured = process.env.RUNWAY_LLM_PROVIDER?.toLowerCase()
-  if (configured === 'openai') return 'openai'
-  if (configured === 'anthropic') return 'anthropic'
-  if (process.env.OPENAI_API_KEY) return 'openai'
-  return 'anthropic'
+  if (configured === 'codex' || configured === 'codex-cli' || configured === 'openai') {
+    return 'codex-cli'
+  }
+  if (configured === 'claude' || configured === 'claude-cli' || configured === 'anthropic') {
+    return 'claude-cli'
+  }
+  if (commandExists('codex')) return 'codex-cli'
+  return 'claude-cli'
 }
 
 export function hasLlmCredentials(): boolean {
   const provider = getLlmProvider()
-  return provider === 'openai'
-    ? Boolean(process.env.OPENAI_API_KEY)
-    : Boolean(process.env.ANTHROPIC_API_KEY)
+  return provider === 'codex-cli'
+    ? commandExists('codex')
+    : commandExists('claude')
 }
 
-async function openAIChatCompletion(body: Record<string, unknown>) {
-  const response = await fetch(OPENAI_CHAT_COMPLETIONS_URL, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY || ''}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  })
+export function getLlmBackendStatus() {
+  return {
+    provider: getLlmProvider(),
+    hasCodexCli: commandExists('codex'),
+    hasClaudeCli: commandExists('claude'),
+  }
+}
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`OpenAI chat completion failed: ${response.status} ${errorText}`)
+async function runProcess(command: string, args: string[], opts: {
+  cwd?: string
+  input?: string
+} = {}): Promise<{ stdout: string; stderr: string }> {
+  return await new Promise((resolvePromise, reject) => {
+    const child = spawn(command, args, {
+      cwd: opts.cwd,
+      stdio: 'pipe',
+      env: process.env,
+    })
+
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString()
+    })
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString()
+    })
+
+    child.on('error', reject)
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolvePromise({ stdout, stderr })
+        return
+      }
+      reject(new Error(`${command} exited with code ${code}\n${stderr || stdout}`))
+    })
+
+    if (opts.input) {
+      child.stdin.write(opts.input)
+    }
+    child.stdin.end()
+  })
+}
+
+function stripCodeFences(text: string): string {
+  return text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
+}
+
+async function runStructuredPrompt(opts: {
+  systemPrompt?: string
+  userPrompt: string
+  schema?: object
+  cwd?: string
+  mode?: 'read-only' | 'workspace-write'
+  complexity?: Complexity
+}): Promise<string> {
+  const provider = getLlmProvider()
+  const prompt = opts.systemPrompt
+    ? `${opts.systemPrompt}\n\n${opts.userPrompt}`
+    : opts.userPrompt
+  const schema = opts.schema || DEFAULT_READ_ONLY_SCHEMA
+
+  if (provider === 'codex-cli') {
+    const tempDir = await mkdtemp(join(tmpdir(), 'runway-schema-'))
+    const schemaPath = join(tempDir, 'schema.json')
+    const outputPath = join(tempDir, 'output.json')
+
+    try {
+      await writeFile(schemaPath, `${JSON.stringify(schema, null, 2)}\n`)
+      const args = [
+        'exec',
+        '--skip-git-repo-check',
+        opts.mode === 'workspace-write'
+          ? '--dangerously-bypass-approvals-and-sandbox'
+          : '--sandbox',
+      ]
+      if (opts.mode !== 'workspace-write') {
+        args.push('read-only')
+      }
+      if (opts.cwd) {
+        args.push('-C', opts.cwd)
+      }
+      args.push('--output-schema', schemaPath, '--output-last-message', outputPath)
+
+      const model = opts.mode === 'workspace-write'
+        ? CODEX_DEV_MODELS[opts.complexity || 'normal']
+        : process.env.RUNWAY_CODEX_TEXT_MODEL
+      if (model) {
+        args.push('--model', model)
+      }
+
+      args.push('-')
+      await runProcess('codex', args, { cwd: opts.cwd, input: prompt })
+      return stripCodeFences(await readLocalFile(outputPath, 'utf-8'))
+    } finally {
+      await rm(tempDir, { recursive: true, force: true })
+    }
   }
 
-  return response.json() as Promise<Record<string, any>>
+  const args = [
+    '-p',
+    '--output-format',
+    'text',
+    '--permission-mode',
+    opts.mode === 'workspace-write' ? 'bypassPermissions' : 'default',
+    '--json-schema',
+    JSON.stringify(schema),
+    '--no-session-persistence',
+  ]
+  const model = opts.mode === 'workspace-write'
+    ? CLAUDE_DEV_MODELS[opts.complexity || 'normal']
+    : process.env.RUNWAY_CLAUDE_TEXT_MODEL
+  if (model) {
+    args.push('--model', model)
+  }
+  if (opts.systemPrompt) {
+    args.push('--system-prompt', opts.systemPrompt)
+  }
+  args.push(prompt)
+  const { stdout } = await runProcess('claude', args, { cwd: opts.cwd })
+  return stripCodeFences(stdout)
+}
+
+async function runTextPrompt(opts: {
+  systemPrompt?: string
+  userPrompt: string
+  cwd?: string
+  mode?: 'read-only' | 'workspace-write'
+  complexity?: Complexity
+}): Promise<string> {
+  const provider = getLlmProvider()
+  const prompt = opts.systemPrompt
+    ? `${opts.systemPrompt}\n\n${opts.userPrompt}`
+    : opts.userPrompt
+
+  if (provider === 'codex-cli') {
+    const tempDir = await mkdtemp(join(tmpdir(), 'runway-output-'))
+    const outputPath = join(tempDir, 'output.txt')
+
+    try {
+      const args = [
+        'exec',
+        '--skip-git-repo-check',
+        opts.mode === 'workspace-write'
+          ? '--dangerously-bypass-approvals-and-sandbox'
+          : '--sandbox',
+      ]
+      if (opts.mode !== 'workspace-write') {
+        args.push('read-only')
+      }
+      if (opts.cwd) {
+        args.push('-C', opts.cwd)
+      }
+      args.push('--output-last-message', outputPath)
+
+      const model = opts.mode === 'workspace-write'
+        ? CODEX_DEV_MODELS[opts.complexity || 'normal']
+        : process.env.RUNWAY_CODEX_TEXT_MODEL
+      if (model) {
+        args.push('--model', model)
+      }
+
+      args.push('-')
+      await runProcess('codex', args, { cwd: opts.cwd, input: prompt })
+      return stripCodeFences(await readLocalFile(outputPath, 'utf-8'))
+    } finally {
+      await rm(tempDir, { recursive: true, force: true })
+    }
+  }
+
+  const args = [
+    '-p',
+    '--output-format',
+    'text',
+    '--permission-mode',
+    opts.mode === 'workspace-write' ? 'bypassPermissions' : 'default',
+    '--no-session-persistence',
+  ]
+  const model = opts.mode === 'workspace-write'
+    ? CLAUDE_DEV_MODELS[opts.complexity || 'normal']
+    : process.env.RUNWAY_CLAUDE_TEXT_MODEL
+  if (model) {
+    args.push('--model', model)
+  }
+  if (opts.systemPrompt) {
+    args.push('--system-prompt', opts.systemPrompt)
+  }
+  args.push(prompt)
+  const { stdout } = await runProcess('claude', args, { cwd: opts.cwd })
+  return stripCodeFences(stdout)
 }
 
 async function generateStructuredText(opts: {
-  anthropicModel: string
-  openaiModel?: string
-  maxTokens: number
+  schema: object
+  systemPrompt?: string
   userPrompt: string
 }): Promise<string> {
-  const provider = getLlmProvider()
-
-  if (provider === 'openai') {
-    const response = await openAIChatCompletion({
-      model: opts.openaiModel || process.env.RUNWAY_OPENAI_TEXT_MODEL || 'gpt-5-mini',
-      messages: [{ role: 'user', content: opts.userPrompt }],
-      max_completion_tokens: opts.maxTokens,
-      response_format: { type: 'json_object' },
-    })
-
-    return response.choices?.[0]?.message?.content || ''
-  }
-
-  if (!anthropicClient) {
-    throw new Error('Missing ANTHROPIC_API_KEY')
-  }
-
-  const response = await anthropicClient.messages.create({
-    model: opts.anthropicModel,
-    max_tokens: opts.maxTokens,
-    messages: [{ role: 'user', content: opts.userPrompt }],
+  return await runStructuredPrompt({
+    systemPrompt: opts.systemPrompt,
+    userPrompt: opts.userPrompt,
+    schema: opts.schema,
+    mode: 'read-only',
   })
-
-  const text = response.content.find((block) => block.type === 'text')
-  if (!text || text.type !== 'text') throw new Error('No response')
-  return text.text
 }
 
 // ─── Dev Agent — agentic tool-use loop ───────────────────────────────────────
@@ -229,15 +295,13 @@ export async function implementIssue(opts: {
   issueDescription: string
   repo: string
   token: string
+  localRepoPath?: string
   techStack?: string
   projectContext?: string
   labels?: string[]
 }): Promise<DevResult> {
   const provider = getLlmProvider()
   const complexity = detectComplexity(opts.issueTitle, opts.issueDescription, opts.labels)
-  const model = provider === 'openai'
-    ? OPENAI_DEV_MODELS[complexity]
-    : ANTHROPIC_MODELS[complexity]
   const labelNames = opts.labels?.map((label) => label.toLowerCase()) ?? []
   const workstream: Workstream = labelNames.includes('frontend')
     ? 'frontend'
@@ -246,7 +310,10 @@ export async function implementIssue(opts: {
       : labelNames.includes('fullstack')
         ? 'fullstack'
         : 'fullstack'
-  console.log(`[Claude] model=${model} complexity=${complexity}`)
+  const model = provider === 'codex-cli'
+    ? CODEX_DEV_MODELS[complexity]
+    : CLAUDE_DEV_MODELS[complexity]
+  console.log(`[Runway] provider=${provider} model=${model} complexity=${complexity}`)
 
   const contextSection = opts.projectContext
     ? `## Project context\n${opts.projectContext}\n\n`
@@ -258,187 +325,133 @@ export async function implementIssue(opts: {
       ? 'Focus on APIs, data flow, business logic, persistence, and server-side behavior. Avoid unnecessary UI changes.'
       : 'Treat this as a fullstack issue. Keep the scope balanced across UI and backend changes.'
 
-  const systemPrompt = `You are an expert ${opts.techStack || 'Next.js / TypeScript'} developer implementing a Linear issue.
+  const tempRoot = await mkdtemp(join(tmpdir(), 'runway-dev-'))
+  const workspaceDir = join(tempRoot, 'repo')
+  const repoSource = opts.localRepoPath
+    ? resolve(opts.localRepoPath)
+    : opts.token
+      ? `https://x-access-token:${opts.token}@github.com/${opts.repo}.git`
+      : `https://github.com/${opts.repo}.git`
 
-${contextSection}Use the tools to explore the codebase and implement the task:
-1. Prefer list_dir first to orient yourself before reading files
-2. Call read_file only for files you truly need
-3. Avoid reading generated files, lockfiles, binaries, or very large files unless absolutely necessary
-4. If the issue needs a brand/product logo SVG, use search_logo and fetch_logo_svg with theSVG before hardcoding or redrawing assets
-5. Call write_file for each file you want to change (full file content, not diffs)
-6. Call done when finished — do NOT call done until all write_file calls are complete
+  try {
+    await runProcess('git', ['clone', '--depth', '1', repoSource, workspaceDir])
 
-Workstream: ${workstream}
+    const repoRootListing = await readDir(opts.repo, '', opts.token).catch(() => [])
+    const systemPrompt = `You are an expert ${opts.techStack || 'Next.js / TypeScript'} developer implementing a Linear issue inside a local git workspace.
+
+${contextSection}Workstream: ${workstream}
 ${workstreamGuidance}
 
-Be surgical: change only what's needed. If you cannot safely implement, call done with no prior write_file calls and explain in summary.`
+Rules:
+- make the smallest safe change set that fully solves the issue
+- do not delete files
+- do not rename files
+- do not commit, push, or open a PR yourself
+- if the task needs a brand or product logo, fetch the SVG from theSVG instead of redrawing it
+- keep changes production-minded and consistent with the existing codebase
+- before you finish, verify the actual modified files in the workspace using git diff or equivalent
+- if there are no file changes, say that clearly instead of pretending the task was implemented
+- when finished, respond with JSON only`
 
-  const userPrompt = `Implement this issue:\n\n**${opts.issueTitle}**\n\n${opts.issueDescription || '(no description)'}`
+    const userPrompt = `Repository top level:
+${repoRootListing.slice(0, 50).join('\n') || '(unable to read repo listing via GitHub API)'}
 
-  const changes: DevResult['changes'] = []
-  let summary = ''
-  let prDescription = ''
-  let iterations = 0
-  const MAX_ITER = DEV_MAX_ITERATIONS[complexity]
+Implement this issue:
 
-  if (provider === 'openai') {
-    const openAiTools = DEV_TOOLS.map((tool) => ({
-      type: 'function',
-      function: {
-        name: tool.name,
-        description: tool.description,
-        parameters: tool.input_schema,
-      },
-    }))
+Title: ${opts.issueTitle}
 
-    const messages: Array<Record<string, any>> = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ]
+Description:
+${opts.issueDescription || '(no description)'}
 
-    while (iterations++ < MAX_ITER) {
-      const response = await openAIChatCompletion({
-        model,
-        messages,
-        tools: openAiTools,
-        tool_choice: 'auto',
-        max_completion_tokens: DEV_MAX_TOKENS[complexity],
-      })
+Return JSON with:
+- summary: one paragraph
+- prDescription: markdown with sections ## What, ## Why, ## How to test`
 
-      const assistantMessage = response.choices?.[0]?.message
-      if (!assistantMessage) break
-      messages.push(assistantMessage)
-
-      const toolCalls = assistantMessage.tool_calls ?? []
-      if (toolCalls.length === 0) {
-        break
-      }
-
-      for (const toolCall of toolCalls) {
-        const input = JSON.parse(toolCall.function.arguments || '{}') as Record<string, string>
-        let result = ''
-
-        if (toolCall.function.name === 'read_file') {
-          const file = await readFile(opts.repo, input.path, opts.token)
-          result = file ? file.content : `File not found: ${input.path}`
-        } else if (toolCall.function.name === 'list_dir') {
-          const entries = await readDir(opts.repo, input.path, opts.token)
-          result = entries.length > 0 ? entries.join('\n') : `Empty or not found: ${input.path}`
-        } else if (toolCall.function.name === 'write_file') {
-          const nextChange = { path: input.path, content: input.content, reason: input.reason }
-          const existingIndex = changes.findIndex((change) => change.path === input.path)
-          if (existingIndex >= 0) {
-            changes[existingIndex] = nextChange
-          } else {
-            changes.push(nextChange)
-          }
-          result = `Staged: ${input.path}`
-        } else if (toolCall.function.name === 'done') {
-          summary = input.summary
-          prDescription = input.prDescription
-          return { changes, summary, prDescription }
-        } else if (toolCall.function.name === 'search_logo') {
-          const results = await searchLogos(input.query)
-          result = results.length > 0
-            ? JSON.stringify(results, null, 2)
-            : `No logos found for query: ${input.query}`
-        } else if (toolCall.function.name === 'fetch_logo_svg') {
-          result = await fetchLogoSvg(input.slug, input.variant || 'default')
-        }
-
-        messages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: result,
-        })
-      }
-    }
-
-    return { changes, summary: summary || 'Implementation loop ended without done signal.', prDescription }
-  }
-
-  if (!anthropicClient) {
-    throw new Error('Missing ANTHROPIC_API_KEY')
-  }
-
-  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userPrompt }]
-
-  while (iterations++ < MAX_ITER) {
-    const response = await anthropicClient.messages.create({
-      model,
-      max_tokens: DEV_MAX_TOKENS[complexity],
-      system: systemPrompt,
-      tools: DEV_TOOLS,
-      messages,
+    await runTextPrompt({
+      systemPrompt,
+      userPrompt,
+      cwd: workspaceDir,
+      mode: 'workspace-write',
+      complexity,
     })
 
-    // Append assistant turn
-    messages.push({ role: 'assistant', content: response.content })
-
-    if (response.stop_reason === 'end_turn') break
-
-    if (response.stop_reason === 'tool_use') {
-      const toolUseBlocks = response.content.filter(b => b.type === 'tool_use') as Anthropic.ToolUseBlock[]
-      const toolResults: Anthropic.ToolResultBlockParam[] = []
-
-      for (const block of toolUseBlocks) {
-        const input = block.input as Record<string, string>
-        let result = ''
-
-        if (block.name === 'read_file') {
-          console.log(`[Claude] read_file: ${input.path}`)
-          const file = await readFile(opts.repo, input.path, opts.token)
-          result = file ? file.content : `File not found: ${input.path}`
-        }
-
-        else if (block.name === 'list_dir') {
-          console.log(`[Claude] list_dir: ${input.path}`)
-          const entries = await readDir(opts.repo, input.path, opts.token)
-          result = entries.length > 0 ? entries.join('\n') : `Empty or not found: ${input.path}`
-        }
-
-        else if (block.name === 'write_file') {
-          console.log(`[Claude] write_file: ${input.path}`)
-          const nextChange = { path: input.path, content: input.content, reason: input.reason }
-          const existingIndex = changes.findIndex((change) => change.path === input.path)
-          if (existingIndex >= 0) {
-            changes[existingIndex] = nextChange
-          } else {
-            changes.push(nextChange)
-          }
-          result = `Staged: ${input.path}`
-        }
-
-        else if (block.name === 'done') {
-          summary = input.summary
-          prDescription = input.prDescription
-          toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'Done acknowledged.' })
-          messages.push({ role: 'user', content: toolResults })
-          return { changes, summary, prDescription }
-        }
-
-        else if (block.name === 'search_logo') {
-          console.log(`[Claude] search_logo: ${input.query}`)
-          const results = await searchLogos(input.query)
-          result = results.length > 0
-            ? JSON.stringify(results, null, 2)
-            : `No logos found for query: ${input.query}`
-        }
-
-        else if (block.name === 'fetch_logo_svg') {
-          const variant = input.variant || 'default'
-          console.log(`[Claude] fetch_logo_svg: ${input.slug}/${variant}`)
-          result = await fetchLogoSvg(input.slug, variant)
-        }
-
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result })
-      }
-
-      messages.push({ role: 'user', content: toolResults })
+    const { stdout: unsupportedChanges } = await runProcess(
+      'git',
+      ['diff', '--name-status', '--diff-filter=DR'],
+      { cwd: workspaceDir },
+    )
+    if (unsupportedChanges.trim()) {
+      throw new Error(
+        `Dev Agent produced unsupported file deletions or renames:\n${unsupportedChanges.trim()}`,
+      )
     }
-  }
 
-  return { changes, summary: summary || 'Implementation loop ended without done signal.', prDescription }
+    const { stdout: changedPathsOutput } = await runProcess(
+      'git',
+      ['diff', '--name-only', '--diff-filter=ACM'],
+      { cwd: workspaceDir },
+    )
+    const changedPaths = changedPathsOutput
+      .split('\n')
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+
+    if (changedPaths.length === 0) {
+      return {
+        changes: [],
+        summary: 'Local CLI run completed, but no file changes were detected in the workspace.',
+        prDescription: '## What\n- no file changes were produced\n\n## Why\n- the local CLI finished without modifying the workspace\n\n## How to test\n- inspect the Runway logs and rerun with a narrower issue or a different provider if needed',
+      }
+    }
+
+    const raw = await runStructuredPrompt({
+      cwd: workspaceDir,
+      mode: 'read-only',
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          summary: { type: 'string' },
+          prDescription: { type: 'string' },
+        },
+        required: ['summary', 'prDescription'],
+      },
+      userPrompt: `You are summarizing an already completed implementation.
+
+Issue title: ${opts.issueTitle}
+
+Issue description:
+${opts.issueDescription || '(no description)'}
+
+Changed files:
+${changedPaths.map((path) => `- ${path}`).join('\n')}
+
+Return JSON with:
+- summary: one paragraph
+- prDescription: markdown with sections ## What, ## Why, ## How to test`,
+    })
+
+    const parsed = JSON.parse(stripCodeFences(raw)) as {
+      summary: string
+      prDescription: string
+    }
+
+    const changes = await Promise.all(
+      changedPaths.map(async (path) => ({
+        path,
+        content: await readLocalFile(join(workspaceDir, path), 'utf-8'),
+        reason: `Updated by ${provider} for ${opts.issueTitle}`,
+      })),
+    )
+
+    return {
+      changes,
+      summary: parsed.summary,
+      prDescription: parsed.prDescription,
+    }
+  } finally {
+    await rm(tempRoot, { recursive: true, force: true })
+  }
 }
 
 // ─── PM Agent ────────────────────────────────────────────────────────────────
@@ -508,16 +521,75 @@ const ISSUE_DESCRIPTION_FORMAT = `## Problem
 
 export async function analyzePRD(prd: string): Promise<Roadmap> {
   const raw = await generateStructuredText({
-    anthropicModel: 'claude-sonnet-4-5-20251001',
-    openaiModel: process.env.RUNWAY_OPENAI_PLAN_MODEL || 'gpt-5-mini',
-    maxTokens: 6000,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        projectName: { type: 'string' },
+        projectDescription: { type: 'string' },
+        phases: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              name: { type: 'string' },
+              goal: { type: 'string' },
+              releases: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    name: { type: 'string' },
+                    description: { type: 'string' },
+                    sprints: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        additionalProperties: false,
+                        properties: {
+                          name: { type: 'string' },
+                          goal: { type: 'string' },
+                          startWeek: { type: 'number' },
+                          durationWeeks: { type: 'number' },
+                          issues: {
+                            type: 'array',
+                            items: {
+                              type: 'object',
+                              additionalProperties: false,
+                              properties: {
+                                title: { type: 'string' },
+                                description: { type: 'string' },
+                                priority: { type: 'number' },
+                                estimate: { type: 'number' },
+                                epic: { type: 'string' },
+                                workstream: { type: 'string', enum: ['frontend', 'backend', 'fullstack'] },
+                              },
+                              required: ['title', 'description', 'priority', 'estimate', 'epic', 'workstream'],
+                            },
+                          },
+                        },
+                        required: ['name', 'goal', 'startWeek', 'durationWeeks', 'issues'],
+                      },
+                    },
+                  },
+                  required: ['name', 'description', 'sprints'],
+                },
+              },
+            },
+            required: ['name', 'goal', 'releases'],
+          },
+        },
+      },
+      required: ['projectName', 'projectDescription', 'phases'],
+    },
     userPrompt: `You are a senior PM. Analyze this PRD and return ONLY a JSON roadmap (no markdown).
 
 PRD:
 ${prd}
 
 JSON shape:
-{"projectName":"string","projectDescription":"string","phases":[{"name":"Phase 1 — Foundation","goal":"string","releases":[{"name":"Release 1 — MVP","description":"string","sprints":[{"name":"Sprint 1","goal":"string","startWeek":0,"durationWeeks":2,"issues":[{"title":"string","description":"markdown issue body using the required template","priority":2,"estimate":3,"epic":"string"}]}]}]}]}
 {"projectName":"string","projectDescription":"string","phases":[{"name":"Phase 1 — Foundation","goal":"string","releases":[{"name":"Release 1 — MVP","description":"string","sprints":[{"name":"Sprint 1","goal":"string","startWeek":0,"durationWeeks":2,"issues":[{"title":"string","description":"markdown issue body using the required template","priority":2,"estimate":3,"epic":"string","workstream":"frontend"}]}]}]}]}
 
 Issue description template for every issue:
@@ -579,9 +651,22 @@ export async function refineIssues(opts: {
     .join('\n\n---\n\n')
 
   const raw = await generateStructuredText({
-    anthropicModel: 'claude-sonnet-4-5-20251001',
-    openaiModel: process.env.RUNWAY_OPENAI_REFINE_MODEL || 'gpt-5-mini',
-    maxTokens: 8000,
+    schema: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          issueId: { type: 'string' },
+          description: { type: 'string' },
+          estimate: { type: 'number' },
+          complexity: { type: 'string', enum: ['simple', 'normal', 'complex'] },
+          workstream: { type: 'string', enum: ['frontend', 'backend', 'fullstack'] },
+          summary: { type: 'string' },
+        },
+        required: ['issueId', 'description', 'estimate', 'complexity', 'workstream', 'summary'],
+      },
+    },
     userPrompt: `You are a senior PM and tech lead. Refine these Linear issues for a ${opts.techStack || 'Next.js'} project.
 
 ${contextSection}Repository top-level structure:
@@ -627,9 +712,30 @@ export async function analyzeFeatureRequest(opts: {
     : 'No Figma link was provided.\n'
 
   const raw = await generateStructuredText({
-    anthropicModel: 'claude-haiku-4-5-20251001',
-    openaiModel: process.env.RUNWAY_OPENAI_PRODUCT_MODEL || 'gpt-5-mini',
-    maxTokens: 2500,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        summary: { type: 'string' },
+        shouldBuildNow: { type: 'boolean' },
+        issues: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              title: { type: 'string' },
+              description: { type: 'string' },
+              priority: { type: 'number' },
+              workstream: { type: 'string', enum: ['frontend', 'backend', 'fullstack'] },
+              needsDesign: { type: 'boolean' },
+            },
+            required: ['title', 'description', 'priority', 'workstream', 'needsDesign'],
+          },
+        },
+      },
+      required: ['summary', 'shouldBuildNow', 'issues'],
+    },
     userPrompt: `You are a product-minded PM. Analyze this feature request and produce a small set of draft Linear issues for human review before any coding happens.
 
 ${figmaSection}
@@ -688,9 +794,27 @@ export async function generateSprintReview(opts: {
     : '(none)'
 
   const raw = await generateStructuredText({
-    anthropicModel: 'claude-sonnet-4-5-20251001',
-    openaiModel: process.env.RUNWAY_OPENAI_REPORT_MODEL || 'gpt-5-mini',
-    maxTokens: 2000,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        summary: { type: 'string' },
+        recommendations: { type: 'array', items: { type: 'string' } },
+        carryOvers: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              issueId: { type: 'string' },
+              reason: { type: 'string' },
+            },
+            required: ['issueId', 'reason'],
+          },
+        },
+      },
+      required: ['summary', 'recommendations', 'carryOvers'],
+    },
     userPrompt: `Generate a sprint retrospective for ${opts.sprintName}.
 
 Completed (${opts.doneIssues.length} issues, ${velocity}pts):
@@ -780,9 +904,15 @@ export interface DocumentDraft { title: string; docType: DocType; markdown: stri
 
 export async function draftDocument(opts: { context: string; docType: DocType }): Promise<DocumentDraft> {
   const raw = await generateStructuredText({
-    anthropicModel: 'claude-sonnet-4-5-20251001',
-    openaiModel: process.env.RUNWAY_OPENAI_DOC_MODEL || 'gpt-5-mini',
-    maxTokens: 4096,
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        title: { type: 'string' },
+        markdown: { type: 'string' },
+      },
+      required: ['title', 'markdown'],
+    },
     userPrompt: `Write a ${opts.docType === 'brief' ? 'Project Brief' : 'PRD'} from this context. Return ONLY JSON: {"title":"string","markdown":"string"}
 
 Context:

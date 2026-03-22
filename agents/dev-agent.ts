@@ -14,6 +14,7 @@ import projectsConfig from '../projects.json'
 type ProjectConfig = {
   linearTeamId: string
   githubRepo: string
+  localRepoPath?: string
   techStack?: string
   notionContextPageId?: string
 }
@@ -48,7 +49,7 @@ export async function runDevAgent(issue: LinearIssue): Promise<void> {
   if (!hasLlmCredentials()) {
     await failIssue(
       issue.id,
-      'Missing LLM credentials. Set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` and optionally `RUNWAY_LLM_PROVIDER`.',
+      'Missing local LLM backend. Install and log into `codex` or `claude`, then optionally set `RUNWAY_LLM_PROVIDER=codex-cli` or `RUNWAY_LLM_PROVIDER=claude-cli`.',
     )
     return
   }
@@ -79,6 +80,7 @@ export async function runDevAgent(issue: LinearIssue): Promise<void> {
       issueDescription: issue.description || '',
       repo: config.githubRepo,
       token,
+      localRepoPath: config.localRepoPath,
       techStack: config.techStack,
       projectContext: projectContext ?? undefined,
       labels,

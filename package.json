@@ -2,15 +2,16 @@
   "name": "runway",
   "version": "0.1.0",
   "private": true,
-  "description": "CLI-first AI agent runtime for Linear, Claude, GitHub, and Notion workflows.",
+  "description": "CLI-first agent runtime for Linear, Codex, Claude Code, GitHub, and Notion workflows.",
   "scripts": {
     "dev": "tsx cli.ts",
+    "dev:codex": "RUNWAY_LLM_PROVIDER=codex-cli tsx cli.ts",
+    "dev:claude": "RUNWAY_LLM_PROVIDER=claude-cli tsx cli.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/cli.js",
     "check": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.80.0",
     "dotenv": "^16.6.1"
   },
   "devDependencies": {
