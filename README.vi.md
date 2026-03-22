@@ -32,7 +32,7 @@ Runway xoay quanh ba lớp agent chính:
 Workflow hỗ trợ:
 
 - `write-report` ghi status ra file `.md`
-- `write-steering` tạo steering docs kiểu Kiro
+- `write-steering` tạo steering docs của Runway
 - `sprint-review` tạo retrospective và carry-over issues
 - `projects` quản lý project registry local
 
@@ -45,7 +45,7 @@ Runway được thiết kế theo flow review-first:
 3. Bạn review và chỉnh scope trên Linear.
 4. Bạn thêm hoặc cập nhật link Figma khi cần.
 5. `refine` nâng chất lượng issue.
-6. `write-steering` tạo guidance lâu dài trong `.kiro/steering/`.
+6. `write-steering` tạo guidance lâu dài trong `.runway/steering/`.
 7. `run` chỉ được dùng cho các issue bạn chủ động approve để build.
 
 Flow này giúp tách rõ planning, UX intent và implementation approval.
@@ -56,9 +56,9 @@ Runway ưu tiên context ngắn gọn, có version control, thay vì dựa quá 
 
 Thứ tự ưu tiên context:
 
-1. `.kiro/steering/product.md`
-2. `.kiro/steering/structure.md`
-3. `.kiro/steering/tech.md`
+1. `.runway/steering/product.md`
+2. `.runway/steering/structure.md`
+3. `.runway/steering/tech.md`
 4. optional Notion context page
 
 Mục tiêu là để agent luôn có rule quan trọng của project mà không tốn nhiều token.
@@ -166,12 +166,12 @@ claude auth login
 
 ## Steering docs
 
-Runway hỗ trợ steering docs kiểu Kiro trong repo đích:
+Runway hỗ trợ steering docs của Runway trong repo đích:
 
 ```text
-.kiro/steering/product.md
-.kiro/steering/structure.md
-.kiro/steering/tech.md
+.runway/steering/product.md
+.runway/steering/structure.md
+.runway/steering/tech.md
 ```
 
 Tạo chúng bằng:
@@ -309,7 +309,7 @@ pnpm dev -- write-report --project your-project
 
 ### `write-steering`
 
-Ghi steering docs vào `.kiro/steering/` của repo đích.
+Ghi steering docs vào `.runway/steering/` của repo đích.
 
 ```bash
 pnpm dev -- write-steering \

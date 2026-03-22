@@ -32,7 +32,7 @@ Runway is built around three main agent layers:
 Support workflows:
 
 - `write-report` writes status snapshots to `.md`
-- `write-steering` creates Kiro-style steering docs
+- `write-steering` creates steering docs
 - `sprint-review` creates retrospectives and optional carry-over issues
 - `projects` manages the local project registry
 
@@ -45,7 +45,7 @@ Runway is designed for a review-first execution flow:
 3. You review and adjust scope in Linear.
 4. You add or update Figma links when needed.
 5. `refine` improves issue quality.
-6. `write-steering` creates persistent project guidance in `.kiro/steering/`.
+6. `write-steering` creates persistent project guidance in `.runway/steering/`.
 7. `run` is executed only for the issues you explicitly approve for implementation.
 
 This keeps planning, UX intent, and implementation approval separate.
@@ -56,9 +56,9 @@ Runway prefers compact, versioned context over heavy documentation systems.
 
 Context priority:
 
-1. `.kiro/steering/product.md`
-2. `.kiro/steering/structure.md`
-3. `.kiro/steering/tech.md`
+1. `.runway/steering/product.md`
+2. `.runway/steering/structure.md`
+3. `.runway/steering/tech.md`
 4. optional Notion context page
 
 The goal is to keep agents grounded with high-signal project rules without wasting tokens.
@@ -166,12 +166,12 @@ claude auth login
 
 ## Steering docs
 
-Runway supports Kiro-style steering docs in the target repo:
+Runway supports steering docs in the target repo:
 
 ```text
-.kiro/steering/product.md
-.kiro/steering/structure.md
-.kiro/steering/tech.md
+.runway/steering/product.md
+.runway/steering/structure.md
+.runway/steering/tech.md
 ```
 
 Generate them with:
@@ -309,7 +309,7 @@ pnpm dev -- write-report --project your-project
 
 ### `write-steering`
 
-Write steering docs to `.kiro/steering/` in the target repo.
+Write steering docs to `.runway/steering/` in the target repo.
 
 ```bash
 pnpm dev -- write-steering \

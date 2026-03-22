@@ -20,7 +20,7 @@ function trimSection(content: string, maxChars: number) {
 }
 
 export function getSteeringDir(localRepoPath: string) {
-  return join(resolve(localRepoPath), '.kiro', 'steering')
+  return join(resolve(localRepoPath), '.runway', 'steering')
 }
 
 export async function writeSteeringDocs(localRepoPath: string, docs: SteeringDocs) {

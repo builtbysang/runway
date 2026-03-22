@@ -949,7 +949,7 @@ export async function draftSteeringDocs(opts: {
       },
       required: ['product', 'structure', 'tech'],
     },
-    userPrompt: `Create three steering markdown documents for an engineering project, similar to Kiro steering docs.
+    userPrompt: `Create three steering markdown documents for an engineering project.
 
 ${contextSection}Source context:
 ${opts.context}
