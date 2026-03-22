@@ -11,6 +11,7 @@ Runway is a CLI-first TypeScript runtime. Treat it as an automation service, not
 
 ## Working rules
 
+- Use `pnpm` for install, scripts, and lockfile updates. Do not reintroduce `npm` commands or `package-lock.json`.
 - Keep business logic out of `cli.ts`; put it in `commands/`, `agents/`, or `skills/`.
 - Prefer framework-free TypeScript and Node standard library utilities.
 - Keep commands composable so a future webhook or scheduler can call the same handlers.

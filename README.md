@@ -2,112 +2,128 @@
 
 [Tiếng Việt](./README.vi.md)
 
-Runway is a local-first agent runtime for software projects.
+Runway is a CLI-first agent runtime for software teams.
 
-It connects product intake, Linear planning, GitHub implementation, optional Notion sync, and Figma-aware issue drafting in one CLI-first workflow. This repo no longer runs as a webhook-driven web app. There is no automatic "Linear In Progress -> code immediately" behavior in the current version.
+It helps you move from product request to reviewed Linear issues, steering docs, markdown reports, and implementation PRs using a small set of focused agents. Runway is designed for local operation, explicit human review, and low-overhead project context.
 
-## Current workflow
+## What Runway does
 
-Runway is designed for a review-first flow:
-
-1. You send a feature request or product brief.
-2. `product-intake` analyzes the request and creates draft issues in Linear.
-3. You review those issues in Linear.
-4. If needed, you add or update the Figma link on the issue.
-5. `refine` upgrades issue quality and metadata when needed.
-6. Only when you explicitly decide to build do you run `run` for the approved issue(s).
-
-In other words:
-
-- Runway does not auto-code right after receiving a request.
-- Runway does not auto-trigger from Linear status changes in this version.
-- Figma should be treated as the source of truth whenever you provide it.
-
-## Agents and workflows
-
-Runway currently has three main agent layers plus support workflows:
+Runway is built around three main agent layers:
 
 - `Product Agent`
-  - analyzes a request
-  - prefers Figma if provided
-  - creates small, review-ready draft issues in Linear
+  - analyzes a brief or feature request
+  - prefers Figma when provided
+  - creates draft issues in Linear for review
   - does not code
 
 - `PM Agent`
-  - `plan`: turns a PRD into a roadmap using `phase -> release -> sprint -> issue`
-  - `refine`: upgrades issue descriptions, estimates, complexity, and workstream
-  - `report`: generates a markdown progress report from Linear
-  - `syncNotion`: writes a status snapshot into Notion only when you explicitly run it
+  - turns PRDs into roadmaps using `phase -> release -> sprint -> issue`
+  - refines issue quality, estimates, complexity, and workstream
+  - generates markdown reports
+  - generates steering docs
+  - syncs Notion only when explicitly requested
 
 - `Dev Agent`
-  - implements approved issues
-  - reads the target GitHub repo through the GitHub API
-  - can fetch brand SVGs from theSVG when needed
-  - opens a PR and moves the issue to `In Review`
+  - implements approved issues against your local repo
+  - uses a local authenticated CLI backend: `codex` or `claude`
+  - opens GitHub PRs
+  - updates Linear back to `In Review`
 
 Support workflows:
 
-- `sprint-review`: retrospective plus optional carry-over issues
-- `projects`: manage the local `projects.json` registry
+- `write-report` writes status snapshots to `.md`
+- `write-steering` creates Kiro-style steering docs
+- `sprint-review` creates retrospectives and optional carry-over issues
+- `projects` manages the local project registry
 
-## Why it is CLI-first
+## Workflow
 
-The product logic in this repo lives in:
+Runway is designed for a review-first execution flow:
 
-- `agents/`
-- `commands/`
-- `skills/`
+1. You provide a brief, feature request, or PRD.
+2. `product-intake` or `plan` creates structure in Linear.
+3. You review and adjust scope in Linear.
+4. You add or update Figma links when needed.
+5. `refine` improves issue quality.
+6. `write-steering` creates persistent project guidance in `.kiro/steering/`.
+7. `run` is executed only for the issues you explicitly approve for implementation.
 
-The old `Next.js` and webhook layer has been removed. The current architecture is intentionally lightweight and explicit: you run the commands you want, when you want them to happen.
+This keeps planning, UX intent, and implementation approval separate.
+
+## Project context
+
+Runway prefers compact, versioned context over heavy documentation systems.
+
+Context priority:
+
+1. `.kiro/steering/product.md`
+2. `.kiro/steering/structure.md`
+3. `.kiro/steering/tech.md`
+4. optional Notion context page
+
+The goal is to keep agents grounded with high-signal project rules without wasting tokens.
+
+## Repo structure
+
+```text
+agents/       Agent orchestration logic
+commands/     CLI command handlers
+skills/       Integrations and model/runtime adapters
+lib/          Small shared utilities
+scripts/      Helper scripts
+docs/         Recommended location for markdown outputs
+```
 
 ## Requirements
 
 - `Node.js 20.x`
-- `npm`
-- a local authenticated LLM CLI: `codex` or `claude`
-- Linear API access via `LINEAR_API_KEY`
-- GitHub API access via `GITHUB_TOKEN`
-- Optional Notion API access via `NOTION_TOKEN`
+- `pnpm`
+- one local authenticated LLM CLI:
+  - `codex`
+  - or `claude`
+- `LINEAR_API_KEY`
+- `GITHUB_TOKEN`
+- optional `NOTION_TOKEN`
 
 ## Install
 
 ```bash
 git clone https://github.com/builtbysang/runway.git
 cd runway
-npm install
+pnpm install
 ```
 
-## Configure projects
+## Project configuration
 
-Runway uses `projects.json` as a local registry for the projects it can operate on.
+Runway uses `projects.json` as a local registry.
 
 Example:
 
 ```json
 {
-  "your-project": {
+  "wealth-next": {
     "linearTeamId": "your-linear-team-id",
     "githubRepo": "yourorg/your-repo",
     "localRepoPath": "/absolute/path/to/your/local/repo",
-    "description": "What this project does",
-    "techStack": "TypeScript / Node.js",
+    "description": "Vietnamese personal finance app",
+    "techStack": "Next.js / TypeScript / Tailwind / Supabase",
     "notionContextPageId": "optional-notion-context-page-id",
-    "notionSyncPageId": "optional-notion-status-page-id"
+    "notionSyncPageId": "optional-notion-sync-page-id"
   }
 }
 ```
 
 Field reference:
 
-- `linearTeamId`: Linear team ID used for issues, cycles, labels, and projects
+- `linearTeamId`: Linear team used for issues, labels, cycles, and projects
 - `githubRepo`: GitHub repo in `owner/name` format
-- `localRepoPath`: optional but recommended absolute path to the local codebase that Dev Agent should edit through Codex or Claude
-- `description`: human-readable project label used in reports
-- `techStack`: short context string passed into the LLM
-- `notionContextPageId`: optional Notion page ID used for compressed read-only project context
-- `notionSyncPageId`: optional Notion page ID used for explicit status sync output
+- `localRepoPath`: absolute path to the local codebase Runway should use for implementation and steering docs
+- `description`: human-readable project label
+- `techStack`: short context string passed into the agents
+- `notionContextPageId`: optional read-only context source
+- `notionSyncPageId`: optional Notion status output target
 
-## Environment variables
+## Environment
 
 Create `.env.local`:
 
@@ -119,116 +135,113 @@ NOTION_TOKEN=secret_... # optional
 
 Notes:
 
-- You can keep `LINEAR_API_KEY`, `GITHUB_TOKEN`, and `NOTION_TOKEN` in one place and switch only the LLM backend.
-- `RUNWAY_LLM_PROVIDER` still works, but the easiest way to switch is via the provided npm scripts.
-- Runway uses the local authenticated CLI session. It does not call OpenAI or Anthropic APIs directly anymore.
-- `GITHUB_TOKEN` needs write access if you want Runway to open PRs.
-- `LINEAR_API_KEY` should be able to read and write issues, comments, labels, cycles, and projects.
-- `NOTION_TOKEN` is optional. If it is missing, Runway skips Notion context enrichment and Notion sync.
-- Markdown files are the recommended default output for reports and status snapshots.
+- Keep `LINEAR_API_KEY`, `GITHUB_TOKEN`, and `NOTION_TOKEN` here once.
+- Switch between Codex and Claude with pnpm scripts instead of editing env every time.
+- `GITHUB_TOKEN` should have enough access to create branches and PRs.
+- `NOTION_TOKEN` is optional and only needed for Notion context or manual sync.
 
-## Development commands
+## Using Codex or Claude
 
-During development:
+Use the local CLI you already have logged in.
 
-```bash
-npm run dev -- <command>
-npm run dev:codex -- <command>
-npm run dev:claude -- <command>
-```
-
-After compiling:
+For Codex:
 
 ```bash
-npm run build
-npm start -- <command>
+pnpm dev:codex -- doctor
+pnpm dev:codex -- product-intake --project your-project --brief-file ./docs/brief.md
 ```
 
-Quick sanity checks:
+For Claude:
 
 ```bash
-npm run dev -- doctor
-npm run dev:codex -- doctor
-npm run dev:claude -- doctor
-npm run dev -- write-report --project your-project
-npm run check
-npm run build
-npm run dev -- help
+pnpm dev:claude -- doctor
+pnpm dev:claude -- run --project your-project --issues BUI-123
 ```
 
-## Using with Codex or Claude
-
-Recommended operator flow when a user sends a brief or a Figma link:
-
-1. Run `product-intake` first.
-2. Review the created issues in Linear.
-3. Add or adjust the Figma link on the issue if needed.
-4. Optionally run `refine` on the issues you want to improve.
-5. Only run `run` when you explicitly want code to be generated.
-
-If you are using Codex:
+If Claude fails with a `401`, refresh the local session with:
 
 ```bash
-cp .env.example .env.local
+claude auth login
 ```
 
-Then set:
+## Steering docs
+
+Runway supports Kiro-style steering docs in the target repo:
+
+```text
+.kiro/steering/product.md
+.kiro/steering/structure.md
+.kiro/steering/tech.md
+```
+
+Generate them with:
 
 ```bash
-LINEAR_API_KEY=lin_api_...
-GITHUB_TOKEN=ghp_...
+pnpm dev -- write-steering \
+  --project your-project \
+  --context-file ./docs/prd.md
 ```
 
-And make sure `codex` is installed and already logged in on this machine.
-
-If you are using Claude Code:
+Or inline:
 
 ```bash
-cp .env.example .env.local
+pnpm dev -- write-steering \
+  --project your-project \
+  --context "Project context here"
 ```
 
-Then set:
+Use steering docs for:
+
+- product direction
+- repo/module boundaries
+- engineering constraints and conventions
+
+## Reports
+
+Markdown is the default output format.
+
+Write a project report:
 
 ```bash
-LINEAR_API_KEY=lin_api_...
-GITHUB_TOKEN=ghp_...
+pnpm dev -- write-report --project your-project
 ```
 
-And make sure `claude` is installed and already logged in on this machine.
-If Claude still fails on the first real run with a 401, refresh the local session with `claude auth login` even if `claude auth status` looks healthy.
-
-Fast switching:
+Write a sprint report:
 
 ```bash
-npm run dev:codex -- doctor
-npm run dev:claude -- doctor
+pnpm dev -- write-report \
+  --project your-project \
+  --cycle sprint-id \
+  --output docs/reports/sprint-12.md
 ```
 
-Examples:
+Default output paths:
+
+```text
+docs/reports/<project>.md
+docs/reports/<project>-<cycleId>.md
+```
+
+Use `sync-notion` only when you explicitly want the same information pushed to Notion.
+
+## Commands
+
+### `doctor`
+
+Check whether the current environment is ready to run Runway.
 
 ```bash
-npm run dev:codex -- product-intake --project your-project --brief-file ./docs/brief.md
-npm run dev:claude -- run --project your-project --issues BUI-123
+pnpm dev -- doctor
+pnpm dev:codex -- doctor
+pnpm dev:claude -- doctor
 ```
-
-Before your first real run, use:
-
-```bash
-npm run dev -- doctor
-```
-
-That will tell you which required credentials are still missing.
-
-## Command reference
 
 ### `product-intake`
 
-Analyze a feature request and create draft issues in Linear for human review.
-
-From a file:
+Analyze a brief and create review-ready issues in Linear.
 
 ```bash
-npm run dev -- product-intake \
+pnpm dev -- product-intake \
   --project your-project \
   --brief-file ./docs/brief.md
 ```
@@ -236,194 +249,88 @@ npm run dev -- product-intake \
 With Figma:
 
 ```bash
-npm run dev -- product-intake \
+pnpm dev -- product-intake \
   --project your-project \
   --brief-file ./docs/brief.md \
   --figma-url https://www.figma.com/design/...
 ```
 
-Use this when you want:
-
-- feature analysis before coding
-- UX/product framing before planning
-- draft issues on Linear that you can review manually
-
-This command does not code anything.
-
-### `doctor`
-
-Check whether the current environment is actually ready to run Runway.
-
-```bash
-npm run dev -- doctor
-```
-
-This is especially useful when setting up Runway for Codex or Claude on a new machine or shell session.
-It checks command availability, basic login status, required API tokens, and whether your project is linked to a local repo path.
-
 ### `plan`
 
-Turn a PRD into a roadmap using `phase -> release -> sprint -> issue`.
-
-From a file:
+Turn a PRD into a roadmap.
 
 ```bash
-npm run dev -- plan \
+pnpm dev -- plan \
   --project your-project \
   --prd-file ./docs/prd.md
 ```
 
-Inline:
-
-```bash
-npm run dev -- plan \
-  --project your-project \
-  --prd "Build a personal finance app for couples."
-```
-
-Returns JSON with:
-
-- `projectUrl`
-- `issueCount`
-- `summary`
-
 ### `refine`
 
-Enrich existing Linear issues using repo context plus PM logic.
+Upgrade issue quality and metadata.
 
 ```bash
-npm run dev -- refine \
-  --project your-project \
-  --state Backlog \
-  --limit 10
+pnpm dev -- refine --project your-project
 ```
 
 Or refine specific issues:
 
 ```bash
-npm run dev -- refine \
+pnpm dev -- refine \
   --project your-project \
-  --issues BUI-55,BUI-56
+  --issues BUI-123,BUI-124
 ```
-
-Effects:
-
-- upgrades issue descriptions into a standard template
-- writes story point estimates
-- adds complexity labels
-- assigns workstream labels: `frontend`, `backend`, or `fullstack`
 
 ### `run`
 
-Run the Dev Agent only for issues you want to build now.
-
-Explicit issues:
+Implement approved issues.
 
 ```bash
-npm run dev -- run \
+pnpm dev -- run \
   --project your-project \
-  --issues BUI-32,BUI-33
+  --issues BUI-123
 ```
-
-By state:
-
-```bash
-npm run dev -- run \
-  --project your-project \
-  --state Todo
-```
-
-By cycle:
-
-```bash
-npm run dev -- run \
-  --project your-project \
-  --cycle 234464c2-fba4-47a5-872f-7c342a7c8287
-```
-
-Important:
-
-- this is a manual execution step
-- it is not auto-triggered by Linear state changes in this version
 
 ### `report`
 
-Generate a markdown progress report from Linear data.
-
-Whole project:
+Return a markdown report as JSON.
 
 ```bash
-npm run dev -- report --project your-project
+pnpm dev -- report --project your-project
 ```
-
-Single sprint:
-
-```bash
-npm run dev -- report \
-  --project your-project \
-  --cycle sprint-id
-```
-
-Returns JSON with:
-
-- `stats`
-- `report`
-
-The `report` field is ready to paste into a markdown file, Notion, Slack, or a PR.
 
 ### `write-report`
 
-Write the generated markdown report to a `.md` file. This is the recommended default instead of syncing Notion.
+Write the markdown report to disk.
 
 ```bash
-npm run dev -- write-report --project your-project
+pnpm dev -- write-report --project your-project
 ```
 
-Write to a custom file:
+### `write-steering`
+
+Write steering docs to `.kiro/steering/` in the target repo.
 
 ```bash
-npm run dev -- write-report \
+pnpm dev -- write-steering \
   --project your-project \
-  --cycle sprint-id \
-  --output docs/reports/sprint-12.md
-```
-
-By default this writes to:
-
-```text
-docs/reports/<project>.md
-```
-
-or:
-
-```text
-docs/reports/<project>-<cycleId>.md
+  --context-file ./docs/prd.md
 ```
 
 ### `sync-notion`
 
-Write a status snapshot into Notion only when you explicitly want it.
+Write a status snapshot to Notion.
 
 ```bash
-npm run dev -- sync-notion --project your-project
+pnpm dev -- sync-notion --project your-project
 ```
-
-Or target a specific page:
-
-```bash
-npm run dev -- sync-notion \
-  --project your-project \
-  --page-id your-notion-page-id
-```
-
-This command is manual by design so you do not spend tokens syncing Notion continuously. Prefer `write-report` for the default workflow.
 
 ### `sprint-review`
 
-Generate a sprint retrospective and optionally create carry-over issues.
+Generate a sprint retrospective and optional carry-over issues.
 
 ```bash
-npm run dev -- sprint-review \
+pnpm dev -- sprint-review \
   --project your-project \
   --cycle sprint-id \
   --next-cycle next-sprint-id
@@ -431,66 +338,28 @@ npm run dev -- sprint-review \
 
 ### `projects list`
 
-List the current `projects.json` registry.
-
 ```bash
-npm run dev -- projects list
+pnpm dev -- projects list
 ```
 
 ### `projects add`
 
-Add a new project entry to `projects.json`.
-
 ```bash
-npm run dev -- projects add \
+pnpm dev -- projects add \
   --key your-project \
   --team-id your-linear-team-id \
   --repo yourorg/your-repo \
+  --local-repo-path /absolute/path/to/repo \
   --description "What this project does" \
-  --tech-stack "TypeScript / Node.js" \
-  --notion-page-id optional-notion-context-page-id \
-  --notion-sync-page-id optional-notion-status-page-id
+  --tech-stack "TypeScript / Node.js"
 ```
 
 ## Helper script
-
-There is also a thin wrapper script:
 
 ```bash
 ./scripts/run-sprint.sh --project your-project --cycle sprint-id
 ```
 
-It simply forwards arguments to:
+## License
 
-```bash
-npm run dev -- run ...
-```
-
-## Repo layout
-
-```text
-agents/       Agent orchestration logic
-commands/     CLI command handlers
-lib/          Shared config and argument parsing helpers
-skills/       Integrations for LLMs, GitHub, Linear, Notion, and theSVG
-scripts/      Small shell wrappers around the CLI
-projects.json Local project registry
-cli.ts        Main entrypoint
-```
-
-## Current limitations
-
-- Runway is local-first. There is no built-in HTTP server or webhook listener in this version.
-- The Dev Agent works against GitHub-hosted repos through the GitHub API, not your local filesystem checkout.
-- `run` is manual. Moving a Linear issue to `In Progress` does not auto-execute code.
-- Phase structure exists in the roadmap schema and generated Linear descriptions, but Linear itself is still modeled mainly through projects, cycles, and issues.
-- There is no built-in reviewer or QA agent yet.
-
-## Suggested next steps
-
-If you want to extend Runway next, the highest-leverage additions are:
-
-- `Reviewer Agent` to review generated diffs before PR handoff
-- `QA Agent` to run tests/build checks before PR creation
-- stricter approval gates before `run`
-- a tiny webhook adapter only if you explicitly want automation again
+No license file is included yet. Add one before treating this repo as open-source licensed software.

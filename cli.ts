@@ -9,6 +9,7 @@ import { runIssuesCommand } from './commands/run'
 import { runSprintReviewCommand } from './commands/sprint-review'
 import { runSyncNotionCommand } from './commands/sync-notion'
 import { runWriteReportCommand } from './commands/write-report'
+import { runWriteSteeringCommand } from './commands/write-steering'
 import {
   getNumberFlag,
   getStringArrayFlag,
@@ -31,6 +32,7 @@ Usage:
   runway refine --project <key> [--state <name>] [--limit <n>] [--issues BUI-1,BUI-2]
   runway report --project <key> [--cycle <id>] [--state <name>]
   runway write-report --project <key> [--cycle <id>] [--state <name>] [--output <path>]
+  runway write-steering --project <key> --context-file <file>
   runway sprint-review --project <key> --cycle <id> [--next-cycle <id>]
   runway sync-notion --project <key> [--cycle <id>] [--state <name>] [--page-id <id>]
   runway projects list
@@ -109,6 +111,15 @@ async function main() {
       cycleId: typeof parsed.flags.cycle === 'string' ? parsed.flags.cycle : undefined,
       stateName: typeof parsed.flags.state === 'string' ? parsed.flags.state : undefined,
       output: typeof parsed.flags.output === 'string' ? parsed.flags.output : undefined,
+    })
+    printJson(result)
+    return
+  }
+
+  if (command === 'write-steering') {
+    const result = await runWriteSteeringCommand({
+      projectKey: requireStringFlag(parsed.flags, 'project'),
+      context: readTextInput(parsed.flags, 'context', 'context-file'),
     })
     printJson(result)
     return

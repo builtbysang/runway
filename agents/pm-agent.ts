@@ -6,6 +6,7 @@ import { getProjectConfig } from '../lib/config'
 import {
   analyzePRD,
   buildProgressReport,
+  draftSteeringDocs,
   generateSprintReview,
   type Roadmap,
   type RoadmapPhase,
@@ -25,6 +26,7 @@ import {
   updateIssueDetails,
 } from '../skills/linear'
 import { readProjectContext, replacePageContent } from '../skills/notion'
+import { readSteeringContext, writeSteeringDocs } from '../skills/steering'
 
 const COMPLEXITY_COLORS: Record<string, string> = {
   simple: '#22c55e',
@@ -61,6 +63,11 @@ export interface PMSyncNotionOptions {
   cycleId?: string
   stateName?: string
   pageId?: string
+}
+
+export interface PMSteeringOptions {
+  projectKey: string
+  context: string
 }
 
 function normalizeRoadmapPhases(roadmap: Roadmap): RoadmapPhase[] {
@@ -182,9 +189,12 @@ async function refine(opts: PMRefineOptions) {
     return { ok: true, message: 'No issues found', refined: 0 }
   }
 
-  const projectContext = config.notionContextPageId
-    ? await readProjectContext(config.notionContextPageId).catch(() => null)
-    : null
+  const steeringContext = await readSteeringContext(config.localRepoPath)
+  const projectContext = steeringContext || (
+    config.notionContextPageId
+      ? await readProjectContext(config.notionContextPageId).catch(() => null)
+      : null
+  )
 
   const refinedIssues = await refineIssues({
     issues: issues.map((issue) => ({
@@ -326,6 +336,33 @@ async function syncNotion(opts: PMSyncNotionOptions) {
   }
 }
 
+async function steering(opts: PMSteeringOptions) {
+  const config = getProjectConfig(opts.projectKey)
+
+  if (!config.localRepoPath) {
+    throw new Error('This project has no localRepoPath. Add one before generating steering docs.')
+  }
+
+  const existingContext = await readSteeringContext(config.localRepoPath) || (
+    config.notionContextPageId
+      ? await readProjectContext(config.notionContextPageId).catch(() => null)
+      : null
+  )
+
+  const docs = await draftSteeringDocs({
+    context: opts.context,
+    techStack: config.techStack,
+    projectContext: existingContext ?? undefined,
+  })
+
+  const written = await writeSteeringDocs(config.localRepoPath, docs)
+
+  return {
+    ok: true,
+    ...written,
+  }
+}
+
 async function sprintReview(opts: { projectKey: string; cycleId: string; nextCycleId?: string }) {
   const config = getProjectConfig(opts.projectKey)
 
@@ -407,6 +444,7 @@ export const pmAgent = {
   plan,
   refine,
   report,
+  steering,
   syncNotion,
   sprintReview,
 }

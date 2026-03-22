@@ -2,6 +2,7 @@
   "name": "runway",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.32.1",
   "description": "CLI-first agent runtime for Linear, Codex, Claude Code, GitHub, and Notion workflows.",
   "scripts": {
     "dev": "tsx cli.ts",

@@ -9,6 +9,7 @@ import { hasLlmCredentials, implementIssue } from '../skills/claude'
 import { createBranchAndPR } from '../skills/github'
 import { updateIssue, addComment, getIssueLabels } from '../skills/linear'
 import { readProjectContext } from '../skills/notion'
+import { readSteeringContext } from '../skills/steering'
 import projectsConfig from '../projects.json'
 
 type ProjectConfig = {
@@ -64,12 +65,14 @@ export async function runDevAgent(issue: LinearIssue): Promise<void> {
 
   try {
     // 2. Fetch labels + Notion context in parallel (both optional)
-    const [labels, projectContext] = await Promise.all([
+    const [labels, steeringContext, notionContext] = await Promise.all([
       issue.labels ? Promise.resolve(issue.labels) : getIssueLabels(issue.id),
+      readSteeringContext(config.localRepoPath),
       config.notionContextPageId
         ? readProjectContext(config.notionContextPageId)
         : Promise.resolve(null),
     ])
+    const projectContext = steeringContext || notionContext
 
     console.log(`[Dev Agent] ${issue.identifier} labels=[${labels.join(', ')}]`)
     await addComment(issue.id, `🛠️ **Runway** is implementing this issue against \`${config.githubRepo}\`.`)

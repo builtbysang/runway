@@ -7,4 +7,4 @@
 
 set -e
 
-npm run dev -- run "$@"
+pnpm dev -- run "$@"

@@ -902,6 +902,12 @@ ${rows}
 export type DocType = 'brief' | 'prd'
 export interface DocumentDraft { title: string; docType: DocType; markdown: string }
 
+export interface SteeringDocsDraft {
+  product: string
+  structure: string
+  tech: string
+}
+
 export async function draftDocument(opts: { context: string; docType: DocType }): Promise<DocumentDraft> {
   const raw = await generateStructuredText({
     schema: {
@@ -921,4 +927,53 @@ ${opts.context}`,
   const cleaned = raw.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
   const parsed = JSON.parse(cleaned) as { title: string; markdown: string }
   return { title: parsed.title, docType: opts.docType, markdown: parsed.markdown }
+}
+
+export async function draftSteeringDocs(opts: {
+  context: string
+  techStack?: string
+  projectContext?: string
+}): Promise<SteeringDocsDraft> {
+  const contextSection = opts.projectContext
+    ? `Existing project context:\n${opts.projectContext}\n\n`
+    : ''
+
+  const raw = await generateStructuredText({
+    schema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        product: { type: 'string' },
+        structure: { type: 'string' },
+        tech: { type: 'string' },
+      },
+      required: ['product', 'structure', 'tech'],
+    },
+    userPrompt: `Create three steering markdown documents for an engineering project, similar to Kiro steering docs.
+
+${contextSection}Source context:
+${opts.context}
+
+Tech stack:
+${opts.techStack || 'Unknown'}
+
+Return JSON with:
+- product: markdown for product direction and UX intent
+- structure: markdown for repo/module boundaries and implementation structure
+- tech: markdown for stack, architecture rules, constraints, and engineering conventions
+
+Requirements:
+- write concise, high-signal markdown that agents can read quickly
+- optimize for future PM Agent and Dev Agent context loading
+- avoid generic filler
+- if the source is Vietnamese, write in Vietnamese
+- each document should be practical and opinionated
+
+Document guidance:
+- product.md should cover problem framing, target users, goals, non-goals, UX principles, success signals
+- structure.md should cover domain boundaries, major modules, where new code should live, file/folder conventions, integration seams
+- tech.md should cover stack, architectural constraints, coding patterns, data/API rules, testing expectations, deployment/runtime assumptions`,
+  })
+
+  return JSON.parse(stripCodeFences(raw)) as SteeringDocsDraft
 }
