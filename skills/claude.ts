@@ -236,6 +236,184 @@ Rules: R1=MVP only, R2=Growth, max 8 issues/sprint, priority 1-4 (1=P0), estimat
   return JSON.parse(raw) as Roadmap
 }
 
+// ─── Refine Agent ─────────────────────────────────────────────────────────────
+
+export interface RefinedIssue {
+  issueId: string
+  description: string   // enriched markdown with ## Acceptance Criteria section
+  estimate: number      // story points: 1/2/3/5/8
+  complexity: 'simple' | 'normal' | 'complex'
+  summary: string       // one line describing what was added
+}
+
+/**
+ * Enrich backlog issues: Claude reads the repo structure and adds AC,
+ * story-point estimates, and complexity classifications.
+ */
+export async function refineIssues(opts: {
+  issues: { id: string; identifier: string; title: string; description: string | null }[]
+  repo: string
+  token: string
+  techStack?: string
+  projectContext?: string
+}): Promise<RefinedIssue[]> {
+  const dirListing = await readDir(opts.repo, '', opts.token)
+  const contextSection = opts.projectContext
+    ? `## Project context\n${opts.projectContext}\n\n`
+    : ''
+
+  const issueList = opts.issues
+    .map(i => `**${i.identifier} (id: ${i.id})**: ${i.title}\n${i.description || '(no description)'}`)
+    .join('\n\n---\n\n')
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-5-20251001',
+    max_tokens: 8000,
+    messages: [{
+      role: 'user',
+      content: `You are a senior PM and tech lead. Refine these Linear issues for a ${opts.techStack || 'Next.js'} project.
+
+${contextSection}Repository top-level structure:
+${dirListing.slice(0, 40).join('\n')}
+
+For each issue produce:
+1. Enriched description with an "## Acceptance Criteria" section (bullet list)
+2. Story points: 1 (trivial <1h), 2 (small ~2h), 3 (medium ~half day), 5 (large ~1 day), 8 (very large >1 day)
+3. Complexity: simple | normal | complex
+
+Issues to refine:
+${issueList}
+
+Return ONLY a JSON array (no markdown fences):
+[{"issueId":"<exact issue id>","description":"<full markdown>","estimate":<number>,"complexity":"<simple|normal|complex>","summary":"<one line>"}]`,
+    }],
+  })
+
+  const text = response.content.find(b => b.type === 'text')
+  if (!text || text.type !== 'text') throw new Error('No response from Claude')
+  const raw = text.text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
+  return JSON.parse(raw) as RefinedIssue[]
+}
+
+// ─── Sprint Review Agent ──────────────────────────────────────────────────────
+
+export interface SprintReview {
+  sprintName: string
+  velocity: number           // story points completed
+  plannedVelocity: number    // total story points in sprint
+  completionRate: number     // percentage 0-100
+  summary: string            // 2-3 sentence retrospective
+  recommendations: string[]  // 3-5 action items
+  carryOvers: { issueId: string; reason: string }[]
+}
+
+export async function generateSprintReview(opts: {
+  sprintName: string
+  doneIssues: { id: string; identifier: string; title: string; estimate?: number }[]
+  notDoneIssues: { id: string; identifier: string; title: string; estimate?: number }[]
+}): Promise<SprintReview> {
+  const velocity = opts.doneIssues.reduce((s, i) => s + (i.estimate ?? 0), 0)
+  const remainingPts = opts.notDoneIssues.reduce((s, i) => s + (i.estimate ?? 0), 0)
+  const plannedVelocity = velocity + remainingPts
+
+  const doneText = opts.doneIssues.length
+    ? opts.doneIssues.map(i => `- ${i.identifier}: ${i.title} (${i.estimate ?? 0}pts)`).join('\n')
+    : '(none)'
+  const notDoneText = opts.notDoneIssues.length
+    ? opts.notDoneIssues.map(i => `- ${i.id} | ${i.identifier}: ${i.title} (${i.estimate ?? 0}pts)`).join('\n')
+    : '(none)'
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-5-20251001',
+    max_tokens: 2000,
+    messages: [{
+      role: 'user',
+      content: `Generate a sprint retrospective for ${opts.sprintName}.
+
+Completed (${opts.doneIssues.length} issues, ${velocity}pts):
+${doneText}
+
+Not completed (${opts.notDoneIssues.length} issues, ${remainingPts}pts):
+${notDoneText}
+
+Return ONLY JSON (no markdown fences):
+{"summary":"2-3 sentences","recommendations":["action 1","action 2","action 3"],"carryOvers":[{"issueId":"<exact id from not-done list>","reason":"why this should be first next sprint"}]}
+
+carryOvers = high-priority incomplete issues that must be done first next sprint. issueId must match the id field in the not-done list above.`,
+    }],
+  })
+
+  const text = response.content.find(b => b.type === 'text')
+  if (!text || text.type !== 'text') throw new Error('No response')
+  const raw = text.text.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
+  const parsed = JSON.parse(raw) as {
+    summary: string
+    recommendations: string[]
+    carryOvers: { issueId: string; reason: string }[]
+  }
+
+  return {
+    sprintName: opts.sprintName,
+    velocity,
+    plannedVelocity,
+    completionRate: plannedVelocity > 0 ? Math.round((velocity / plannedVelocity) * 100) : 100,
+    ...parsed,
+  }
+}
+
+// ─── Progress Report ──────────────────────────────────────────────────────────
+
+/** Build a markdown progress report from a list of issues */
+export function buildProgressReport(opts: {
+  projectName: string
+  sprintName?: string
+  issues: { identifier: string; title: string; state: { name: string }; estimate?: number; priority: number }[]
+}): string {
+  const total = opts.issues.length
+  const done = opts.issues.filter(i => i.state.name.toLowerCase() === 'done').length
+  const inProgress = opts.issues.filter(i => i.state.name.toLowerCase() === 'in progress').length
+  const todo = opts.issues.filter(i => ['todo', 'backlog'].includes(i.state.name.toLowerCase())).length
+  const inReview = opts.issues.filter(i => i.state.name.toLowerCase() === 'in review').length
+
+  const donePoints = opts.issues
+    .filter(i => i.state.name.toLowerCase() === 'done')
+    .reduce((s, i) => s + (i.estimate ?? 0), 0)
+  const totalPoints = opts.issues.reduce((s, i) => s + (i.estimate ?? 0), 0)
+
+  const priorityLabel = (p: number) => ['', '🔴 Urgent', '🟠 High', '🟡 Medium', '🔵 Low'][p] ?? '-'
+
+  const rows = opts.issues
+    .sort((a, b) => a.priority - b.priority)
+    .map(i => `| ${i.identifier} | ${i.title.substring(0, 50).replace(/\|/g, '\\|')} | ${i.state.name} | ${priorityLabel(i.priority)} | ${i.estimate ?? '-'} |`)
+    .join('\n')
+
+  const heading = opts.sprintName
+    ? `# 📊 ${opts.projectName} — ${opts.sprintName}`
+    : `# 📊 ${opts.projectName}`
+
+  return `${heading}
+
+## Summary
+
+| Metric | Value |
+|--------|-------|
+| Total issues | ${total} |
+| ✅ Done | ${done} (${total > 0 ? Math.round((done / total) * 100) : 0}%) |
+| 🔄 In Progress | ${inProgress} |
+| 👀 In Review | ${inReview} |
+| 📋 Todo | ${todo} |
+| Story points | ${donePoints} / ${totalPoints}pts (${totalPoints > 0 ? Math.round((donePoints / totalPoints) * 100) : 0}%) |
+
+## Issues
+
+| ID | Title | Status | Priority | Pts |
+|----|-------|--------|----------|-----|
+${rows}
+
+---
+*Generated by Runway on ${new Date().toISOString().split('T')[0]}*`
+}
+
 // ─── Doc Agent ────────────────────────────────────────────────────────────────
 
 export type DocType = 'brief' | 'prd'

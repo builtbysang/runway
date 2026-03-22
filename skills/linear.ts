@@ -1,6 +1,6 @@
 /**
  * Runway — Linear API skill
- * Create projects, cycles, issues; update state; add comments
+ * Create projects, cycles, issues; update state; add comments; refine; review sprints
  */
 
 const LINEAR_API = 'https://api.linear.app/graphql'
@@ -187,4 +187,96 @@ export async function listIssues(opts: {
     teamId: (n.team as { id: string }).id, state: n.state, priority: n.priority as number,
     labels: n.labels.nodes.map((l) => l.name),
   }))
+}
+
+/** Fetch a single issue with full details (including estimate) */
+export async function getIssue(issueId: string): Promise<LinearIssueRecord & { estimate?: number }> {
+  const data = await gql(`
+    query {
+      issue(id: "${issueId}") {
+        id identifier title description
+        team { id }
+        state { name }
+        priority
+        estimate
+        labels { nodes { name } }
+      }
+    }
+  `)
+  const n = data.issue
+  return {
+    id: n.id, identifier: n.identifier, title: n.title,
+    description: n.description || null,
+    teamId: n.team.id, state: n.state, priority: n.priority,
+    estimate: n.estimate,
+    labels: n.labels.nodes.map((l: { name: string }) => l.name),
+  }
+}
+
+/** Update issue description and/or estimate */
+export async function updateIssueDetails(issueId: string, input: {
+  description?: string
+  estimate?: number
+  labelIds?: string[]
+}) {
+  await gql(
+    `mutation UpdateIssueDetails($id: String!, $input: IssueUpdateInput!) {
+      issueUpdate(id: $id, input: $input) { success }
+    }`,
+    { id: issueId, input }
+  )
+}
+
+export interface CycleRecord {
+  id: string
+  number: number
+  name: string
+  startsAt: string
+  endsAt: string
+  completedAt?: string | null
+}
+
+/** List all cycles (sprints) for a team */
+export async function listCycles(teamId: string): Promise<CycleRecord[]> {
+  const data = await gql(`
+    query {
+      team(id: "${teamId}") {
+        cycles {
+          nodes { id number name startsAt endsAt completedAt }
+        }
+      }
+    }
+  `)
+  return data.team.cycles.nodes as CycleRecord[]
+}
+
+/** Find an existing label by name or create it */
+export async function findOrCreateLabel(teamId: string, name: string, color = '#9ca3af'): Promise<string> {
+  const data = await gql(`
+    query { team(id: "${teamId}") { labels { nodes { id name } } } }
+  `)
+  const existing = (data.team.labels.nodes as { id: string; name: string }[])
+    .find(l => l.name.toLowerCase() === name.toLowerCase())
+  if (existing) return existing.id
+
+  const result = await gql(
+    `mutation CreateLabel($input: IssueLabelCreateInput!) {
+      issueLabelCreate(input: $input) { success issueLabel { id } }
+    }`,
+    { input: { teamId, name, color } }
+  )
+  return result.issueLabelCreate.issueLabel.id
+}
+
+/** Append a label to an issue (non-destructive) */
+export async function addLabelToIssue(issueId: string, labelId: string) {
+  const data = await gql(`query { issue(id: "${issueId}") { labels { nodes { id } } } }`)
+  const existingIds = (data.issue.labels.nodes as { id: string }[]).map(l => l.id)
+  if (existingIds.includes(labelId)) return
+  await gql(
+    `mutation UpdateIssueLabels($id: String!, $input: IssueUpdateInput!) {
+      issueUpdate(id: $id, input: $input) { success }
+    }`,
+    { id: issueId, input: { labelIds: [...existingIds, labelId] } }
+  )
 }

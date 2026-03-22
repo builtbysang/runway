@@ -30,15 +30,27 @@ Linear "In Progress" → webhook → Claude reads files → implements → GitHu
 5. Updates the Linear issue to "In Review" with a PR link and summary
 
 ### PM Agent
-Called via API with a PRD text → creates a full Linear roadmap.
+Three tools for project management without opening Linear:
 
+**Plan** — PRD text → full Linear roadmap
 ```
 PRD text → Claude analyzes → Linear projects + sprints + issues created
 ```
 
-1. Takes a Product Requirements Document (PRD) as input
-2. Claude breaks it into releases, sprints, and individual issues
-3. Creates Linear projects, cycles (sprints), and issues with priorities and estimates
+**Refine** — Enrich backlog issues with Claude
+```
+Backlog issues → Claude reads codebase → adds AC + estimate + complexity label → updates Linear
+```
+
+**Sprint Review** — Automated retrospective
+```
+Sprint end → Claude analyzes done/not-done → retro comment posted → carry-overs created
+```
+
+**Report** — Progress snapshot
+```
+Project/sprint → markdown status report with completion %, velocity, issue table
+```
 
 ---
 
@@ -141,6 +153,91 @@ Response:
 
 ---
 
+---
+
+### `POST /api/refine`
+Enrich backlog issues with acceptance criteria, story-point estimates, and complexity labels.
+
+```bash
+curl -X POST https://your-runway-url.vercel.app/api/refine \
+  -H "Content-Type: application/json" \
+  -d '{
+    "projectKey": "your-project",
+    "stateName": "Backlog",
+    "limit": 10
+  }'
+```
+
+Or refine specific issues:
+
+```bash
+curl -X POST https://your-runway-url.vercel.app/api/refine \
+  -H "Content-Type: application/json" \
+  -d '{
+    "projectKey": "your-project",
+    "issueIds": ["BUI-55", "BUI-56"]
+  }'
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "refined": 2,
+  "issues": [
+    { "identifier": "BUI-55", "estimate": 3, "complexity": "normal" },
+    { "identifier": "BUI-56", "estimate": 5, "complexity": "complex" }
+  ]
+}
+```
+
+---
+
+### `POST /api/sprint/review`
+Run a sprint retrospective: Claude analyses done vs incomplete issues, posts a retro comment on each incomplete issue, and creates carry-over issues in the next sprint.
+
+```bash
+curl -X POST https://your-runway-url.vercel.app/api/sprint/review \
+  -H "Content-Type: application/json" \
+  -d '{
+    "projectKey": "your-project",
+    "cycleId": "sprint-id",
+    "nextCycleId": "next-sprint-id"
+  }'
+```
+
+Response:
+```json
+{
+  "ok": true,
+  "sprintName": "Sprint 1",
+  "velocity": 18,
+  "plannedVelocity": 24,
+  "completionRate": 75,
+  "summary": "Strong sprint with good velocity...",
+  "recommendations": ["...", "..."],
+  "carryOversCreated": 2
+}
+```
+
+---
+
+### `POST /api/report`
+Generate a markdown progress report for a project or sprint.
+
+```bash
+curl -X POST https://your-runway-url.vercel.app/api/report \
+  -H "Content-Type: application/json" \
+  -d '{
+    "projectKey": "your-project",
+    "cycleId": "sprint-id"
+  }'
+```
+
+Response includes a `report` field with a full markdown table ready to paste into Notion, Slack, or a PR description.
+
+---
+
 ### `GET /api/projects`
 List all configured projects.
 
@@ -165,21 +262,27 @@ curl -X POST https://your-runway-url.vercel.app/api/projects \
 ```
 app/
   api/
-    webhook/     # Linear webhook handler → Dev Agent
-    plan/        # PM Agent endpoint
-    projects/    # Project config management
+    plan/           # PM Agent — PRD → roadmap
+    run/            # Batch Dev Agent runner
+    refine/         # Issue refinement (AC + estimate + labels)
+    sprint/review/  # Sprint retrospective + carry-overs
+    report/         # Progress report (markdown)
+    projects/       # Project config management
 
 agents/
-  dev-agent.ts  # Issue → files → Claude → PR → Linear update
+  dev-agent.ts  # Issue → Claude tool-use loop → PR → Linear update
   pm-agent.ts   # PRD → Claude → Linear roadmap
 
 skills/
-  claude.ts     # analyzePRD(), implementIssue(), draftDocument()
-  github.ts     # readFile(), readFiles(), createBranchAndPR()
-  linear.ts     # createProject(), createIssue(), updateIssue(), addComment()
+  claude.ts     # implementIssue(), analyzePRD(), refineIssues(),
+                # generateSprintReview(), buildProgressReport(), draftDocument()
+  github.ts     # readFile(), readDir(), createBranchAndPR()
+  linear.ts     # createProject/Cycle/Issue, updateIssue, listIssues,
+                # listCycles, updateIssueDetails, findOrCreateLabel, addLabelToIssue
+  notion.ts     # readProjectContext()
 
 projects.json   # Multi-project config
-vercel.json     # 300s timeout for AI functions
+vercel.json     # 60s timeout for AI functions
 ```
 
 ---
@@ -247,10 +350,26 @@ Linear "In Progress" → webhook → Claude đọc file → implement → GitHub
 - `complex` / `hard` / `xl` → claude-opus-4-6 (mạnh nhất)
 
 #### PM Agent
-Gọi qua API với nội dung PRD → tạo roadmap Linear đầy đủ.
+Bốn công cụ quản lý dự án, không cần mở Linear:
 
+**Plan** — PRD → roadmap Linear đầy đủ
 ```
 Nội dung PRD → Claude phân tích → Linear projects + sprints + issues
+```
+
+**Refine** — Làm giàu backlog issues
+```
+Backlog issues → Claude đọc codebase → thêm AC + estimate + label complexity → cập nhật Linear
+```
+
+**Sprint Review** — Retrospective tự động
+```
+Cuối sprint → Claude phân tích done/not-done → comment retro → tạo carry-over issues
+```
+
+**Report** — Snapshot tiến độ
+```
+Project/sprint → báo cáo markdown với % hoàn thành, velocity, bảng issue
 ```
 
 ---
@@ -331,6 +450,33 @@ curl -X POST https://runway-url.vercel.app/api/run \
 ```
 
 Runway tự động chuyển từng issue sang "In Progress" rồi implement lần lượt. Trả về kết quả ngay — theo dõi tiến độ trên Linear.
+
+#### `POST /api/refine`
+Làm giàu backlog issues: Claude đọc codebase, thêm Acceptance Criteria, estimate (story points), và label complexity (simple/normal/complex).
+
+```bash
+curl -X POST https://runway-url.vercel.app/api/refine \
+  -H "Content-Type: application/json" \
+  -d '{"projectKey": "ten-du-an", "stateName": "Backlog", "limit": 10}'
+```
+
+#### `POST /api/sprint/review`
+Retrospective tự động: phân tích sprint done/not-done, post comment retro, tạo carry-over issues vào sprint tiếp.
+
+```bash
+curl -X POST https://runway-url.vercel.app/api/sprint/review \
+  -H "Content-Type: application/json" \
+  -d '{"projectKey": "ten-du-an", "cycleId": "sprint-id", "nextCycleId": "next-sprint-id"}'
+```
+
+#### `POST /api/report`
+Báo cáo tiến độ dạng markdown — dán vào Notion, Slack, hoặc PR description.
+
+```bash
+curl -X POST https://runway-url.vercel.app/api/report \
+  -H "Content-Type: application/json" \
+  -d '{"projectKey": "ten-du-an", "cycleId": "sprint-id"}'
+```
 
 #### `POST /api/plan`
 Tạo roadmap Linear từ PRD.
