@@ -2,9 +2,17 @@
 
 [English](./README.md)
 
-Runway là agent runtime dạng CLI dành cho team phát triển phần mềm.
+Runway là agent runtime dạng chat-first dành cho team phát triển phần mềm.
 
-Nó giúp bạn đi từ brief sản phẩm đến issue trên Linear, steering docs, markdown report và PR triển khai bằng một tập agent nhỏ, rõ vai trò. Runway được thiết kế để chạy local, review-first, và ưu tiên context gọn nhưng giàu tín hiệu.
+Trong cách dùng bình thường, bạn chỉ cần chat bằng ngôn ngữ tự nhiên:
+
+- "Phân tích brief này và tạo issue"
+- "Tạo steering docs cho project này"
+- "Refine backlog"
+- "Viết status report"
+- "Implement BUI-123"
+
+Runway sẽ map ý định đó sang workflow nội bộ phù hợp. CLI vẫn tồn tại, nhưng chủ yếu dành cho operator hoặc debug.
 
 ## Runway làm gì
 
@@ -35,6 +43,25 @@ Workflow hỗ trợ:
 - `write-steering` tạo steering docs của Runway
 - `sprint-review` tạo retrospective và carry-over issues
 - `projects` quản lý project registry local
+
+## Cách dùng Runway
+
+Giao diện chính là chat.
+
+Ví dụ chat thường gặp:
+
+- "Biến brief này thành issue trên Linear"
+- "Dùng Figma này để chuẩn bị issue implementation"
+- "Tạo steering docs cho wealth-next"
+- "Viết report hiện tại ra markdown"
+- "Implement issue BUI-123"
+
+Layer command chỉ thực sự cần khi bạn muốn:
+
+- điều khiển thủ công
+- debug local
+- chạy script
+- fallback sang execution chính xác bằng tay
 
 ## Workflow
 
@@ -142,7 +169,12 @@ Ghi chú:
 
 ## Dùng Codex hoặc Claude
 
-Runway dùng local CLI mà bạn đã đăng nhập sẵn.
+Trải nghiệm đúng của Runway vẫn là chat-first.
+
+Bạn chat với Codex hoặc Claude, còn agent sẽ quyết định khi nào cần gọi workflow nội bộ của Runway.
+
+Chỉ dùng CLI trực tiếp khi bạn muốn operator control thật chính xác.
+Local CLI đã login sẵn là thứ Runway dùng bên dưới.
 
 Với Codex:
 
@@ -224,7 +256,7 @@ docs/reports/<project>-<cycleId>.md
 
 `sync-notion` chỉ nên dùng khi bạn thật sự muốn đẩy cùng nội dung đó lên Notion.
 
-## Commands
+## Operator commands
 
 ### `doctor`
 

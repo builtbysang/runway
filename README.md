@@ -2,9 +2,17 @@
 
 [Tiếng Việt](./README.vi.md)
 
-Runway is a CLI-first agent runtime for software teams.
+Runway is a chat-first agent runtime for software teams.
 
-It helps you move from product request to reviewed Linear issues, steering docs, markdown reports, and implementation PRs using a small set of focused agents. Runway is designed for local operation, explicit human review, and low-overhead project context.
+In normal use, you talk to an agent in natural language:
+
+- "Analyze this brief and create issues"
+- "Create steering docs for this project"
+- "Refine these backlog issues"
+- "Generate a status report"
+- "Implement BUI-123"
+
+Runway then maps that intent to the right internal workflow. The CLI still exists, but mainly as an operator/debug layer behind the chat workflow.
 
 ## What Runway does
 
@@ -35,6 +43,25 @@ Support workflows:
 - `write-steering` creates steering docs
 - `sprint-review` creates retrospectives and optional carry-over issues
 - `projects` manages the local project registry
+
+## How to use Runway
+
+The primary interface is chat.
+
+Typical chat requests:
+
+- "Turn this brief into Linear issues"
+- "Use this Figma and prepare the implementation issues"
+- "Generate steering docs for wealth-next"
+- "Write the current project report to markdown"
+- "Implement issue BUI-123"
+
+The command layer is mainly useful for:
+
+- operator control
+- local debugging
+- scripted runs
+- fallback when you want exact manual execution
 
 ## Workflow
 
@@ -142,7 +169,12 @@ Notes:
 
 ## Using Codex or Claude
 
-Use the local CLI you already have logged in.
+The intended experience is still chat-first.
+
+You talk to Codex or Claude, and the agent decides when to call Runway's internal workflows.
+
+Use direct CLI commands only when you want precise operator control.
+The local CLI you already have logged in is what Runway uses under the hood.
 
 For Codex:
 
@@ -224,7 +256,7 @@ docs/reports/<project>-<cycleId>.md
 
 Use `sync-notion` only when you explicitly want the same information pushed to Notion.
 
-## Commands
+## Operator commands
 
 ### `doctor`
 
