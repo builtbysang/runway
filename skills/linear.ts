@@ -5,7 +5,12 @@
 
 const LINEAR_API = 'https://api.linear.app/graphql'
 
-async function gql(query: string, variables?: Record<string, unknown>) {
+interface GraphQLResponse<TData> {
+  data: TData
+  errors?: unknown
+}
+
+async function gql<TData = Record<string, unknown>>(query: string, variables?: Record<string, unknown>) {
   const res = await fetch(LINEAR_API, {
     method: 'POST',
     headers: {
@@ -14,13 +19,15 @@ async function gql(query: string, variables?: Record<string, unknown>) {
     },
     body: JSON.stringify({ query, variables }),
   })
-  const json = await res.json()
+  const json = await res.json() as GraphQLResponse<TData>
   if (json.errors) throw new Error(JSON.stringify(json.errors))
-  return json.data
+  return json.data as TData
 }
 
 export async function getWorkflowStates(teamId: string) {
-  const data = await gql(`query { team(id: "${teamId}") { states { nodes { id name } } } }`)
+  const data = await gql(`query { team(id: "${teamId}") { states { nodes { id name } } } }`) as {
+    team: { states: { nodes: { id: string; name: string }[] } }
+  }
   return data.team.states.nodes as { id: string; name: string }[]
 }
 
@@ -40,7 +47,7 @@ export async function createProject(input: {
       projectCreate(input: $input) { success project { id url name } }
     }`,
     { input }
-  )
+  ) as { projectCreate: { project: { id: string; url: string; name: string } } }
   return data.projectCreate.project as { id: string; url: string; name: string }
 }
 
@@ -56,7 +63,7 @@ export async function createCycle(input: {
       cycleCreate(input: $input) { success cycle { id number } }
     }`,
     { input }
-  )
+  ) as { cycleCreate: { cycle: { id: string; number: number } } }
   return data.cycleCreate.cycle as { id: string; number: number }
 }
 
@@ -66,6 +73,7 @@ export async function createIssue(input: {
   description?: string
   priority?: number
   estimate?: number
+  labelIds?: string[]
   projectId?: string
   cycleId?: string
   stateId?: string
@@ -75,7 +83,7 @@ export async function createIssue(input: {
       issueCreate(input: $input) { success issue { id identifier url title } }
     }`,
     { input }
-  )
+  ) as { issueCreate: { issue: { id: string; identifier: string; url: string; title: string } } }
   return data.issueCreate.issue as { id: string; identifier: string; url: string; title: string }
 }
 
@@ -123,7 +131,7 @@ export interface LinearIssueRecord {
 export async function getIssueLabels(issueId: string): Promise<string[]> {
   const data = await gql(`
     query { issue(id: "${issueId}") { labels { nodes { name } } } }
-  `)
+  `) as { issue: { labels: { nodes: { name: string }[] } } }
   return data.issue.labels.nodes.map((l: { name: string }) => l.name)
 }
 
@@ -155,11 +163,26 @@ export async function listIssues(opts: {
           }
         }
       }
-    `)
-    return data.cycle.issues.nodes.map((n: Record<string, unknown> & { team: { id: string }, state: { name: string }, labels: { nodes: { name: string }[] } }) => ({
+    `) as {
+      cycle: {
+        issues: {
+          nodes: Array<{
+            id: string
+            identifier: string
+            title: string
+            description?: string | null
+            team: { id: string }
+            state: { name: string }
+            priority: number
+            labels: { nodes: { name: string }[] }
+          }>
+        }
+      }
+    }
+    return data.cycle.issues.nodes.map((n) => ({
       id: n.id, identifier: n.identifier, title: n.title,
-      description: (n.description as string) || null,
-      teamId: (n.team as { id: string }).id, state: n.state, priority: n.priority as number,
+      description: n.description || null,
+      teamId: n.team.id, state: n.state, priority: n.priority,
       labels: n.labels.nodes.map((l) => l.name),
     }))
   }
@@ -180,11 +203,24 @@ export async function listIssues(opts: {
         }
       }
     }
-  `)
-  return data.issues.nodes.map((n: Record<string, unknown> & { team: { id: string }, state: { name: string }, labels: { nodes: { name: string }[] } }) => ({
+  `) as {
+    issues: {
+      nodes: Array<{
+        id: string
+        identifier: string
+        title: string
+        description?: string | null
+        team: { id: string }
+        state: { name: string }
+        priority: number
+        labels: { nodes: { name: string }[] }
+      }>
+    }
+  }
+  return data.issues.nodes.map((n) => ({
     id: n.id, identifier: n.identifier, title: n.title,
-    description: (n.description as string) || null,
-    teamId: (n.team as { id: string }).id, state: n.state, priority: n.priority as number,
+    description: n.description || null,
+    teamId: n.team.id, state: n.state, priority: n.priority,
     labels: n.labels.nodes.map((l) => l.name),
   }))
 }
@@ -202,7 +238,19 @@ export async function getIssue(issueId: string): Promise<LinearIssueRecord & { e
         labels { nodes { name } }
       }
     }
-  `)
+  `) as {
+    issue: {
+      id: string
+      identifier: string
+      title: string
+      description: string | null
+      team: { id: string }
+      state: { name: string }
+      priority: number
+      estimate?: number
+      labels: { nodes: { name: string }[] }
+    }
+  }
   const n = data.issue
   return {
     id: n.id, identifier: n.identifier, title: n.title,
@@ -246,7 +294,7 @@ export async function listCycles(teamId: string): Promise<CycleRecord[]> {
         }
       }
     }
-  `)
+  `) as { team: { cycles: { nodes: CycleRecord[] } } }
   return data.team.cycles.nodes as CycleRecord[]
 }
 
@@ -254,7 +302,7 @@ export async function listCycles(teamId: string): Promise<CycleRecord[]> {
 export async function findOrCreateLabel(teamId: string, name: string, color = '#9ca3af'): Promise<string> {
   const data = await gql(`
     query { team(id: "${teamId}") { labels { nodes { id name } } } }
-  `)
+  `) as { team: { labels: { nodes: { id: string; name: string }[] } } }
   const existing = (data.team.labels.nodes as { id: string; name: string }[])
     .find(l => l.name.toLowerCase() === name.toLowerCase())
   if (existing) return existing.id
@@ -264,13 +312,15 @@ export async function findOrCreateLabel(teamId: string, name: string, color = '#
       issueLabelCreate(input: $input) { success issueLabel { id } }
     }`,
     { input: { teamId, name, color } }
-  )
+  ) as { issueLabelCreate: { issueLabel: { id: string } } }
   return result.issueLabelCreate.issueLabel.id
 }
 
 /** Append a label to an issue (non-destructive) */
 export async function addLabelToIssue(issueId: string, labelId: string) {
-  const data = await gql(`query { issue(id: "${issueId}") { labels { nodes { id } } } }`)
+  const data = await gql(`query { issue(id: "${issueId}") { labels { nodes { id } } } }`) as {
+    issue: { labels: { nodes: { id: string }[] } }
+  }
   const existingIds = (data.issue.labels.nodes as { id: string }[]).map(l => l.id)
   if (existingIds.includes(labelId)) return
   await gql(

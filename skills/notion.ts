@@ -19,8 +19,25 @@ function notionHeaders() {
 }
 
 type NotionBlock = {
+  id?: string
   type: string
   [key: string]: unknown
+}
+
+interface NotionBlocksResponse {
+  results: NotionBlock[]
+}
+
+type NotionRichText = { type: 'text'; text: { content: string } }
+type NotionAppendBlock = {
+  object: 'block'
+  type: 'paragraph' | 'heading_1' | 'heading_2' | 'heading_3' | 'bulleted_list_item' | 'divider'
+  paragraph?: { rich_text: NotionRichText[] }
+  heading_1?: { rich_text: NotionRichText[] }
+  heading_2?: { rich_text: NotionRichText[] }
+  heading_3?: { rich_text: NotionRichText[] }
+  bulleted_list_item?: { rich_text: NotionRichText[] }
+  divider?: Record<string, never>
 }
 
 /** Convert a Notion block to plain text (single line) */
@@ -67,8 +84,101 @@ async function fetchBlocks(pageId: string): Promise<NotionBlock[]> {
     const err = await res.text()
     throw new Error(`Notion API error ${res.status}: ${err}`)
   }
-  const data = await res.json()
-  return data.results as NotionBlock[]
+  const data = await res.json() as NotionBlocksResponse
+  return data.results
+}
+
+async function archiveBlock(blockId: string): Promise<void> {
+  const res = await fetch(`${NOTION_API}/blocks/${blockId}`, {
+    method: 'PATCH',
+    headers: notionHeaders(),
+    body: JSON.stringify({ archived: true }),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Notion archive block error ${res.status}: ${err}`)
+  }
+}
+
+function richText(content: string): NotionRichText[] {
+  return content ? [{ type: 'text', text: { content } }] : []
+}
+
+function markdownToBlocks(markdown: string): NotionAppendBlock[] {
+  const lines = markdown.split(/\r?\n/)
+  const blocks: NotionAppendBlock[] = []
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+
+    if (!trimmed) {
+      continue
+    }
+
+    if (trimmed === '---') {
+      blocks.push({ object: 'block', type: 'divider', divider: {} })
+      continue
+    }
+
+    if (trimmed.startsWith('### ')) {
+      blocks.push({
+        object: 'block',
+        type: 'heading_3',
+        heading_3: { rich_text: richText(trimmed.slice(4)) },
+      })
+      continue
+    }
+
+    if (trimmed.startsWith('## ')) {
+      blocks.push({
+        object: 'block',
+        type: 'heading_2',
+        heading_2: { rich_text: richText(trimmed.slice(3)) },
+      })
+      continue
+    }
+
+    if (trimmed.startsWith('# ')) {
+      blocks.push({
+        object: 'block',
+        type: 'heading_1',
+        heading_1: { rich_text: richText(trimmed.slice(2)) },
+      })
+      continue
+    }
+
+    if (trimmed.startsWith('- ')) {
+      blocks.push({
+        object: 'block',
+        type: 'bulleted_list_item',
+        bulleted_list_item: { rich_text: richText(trimmed.slice(2)) },
+      })
+      continue
+    }
+
+    blocks.push({
+      object: 'block',
+      type: 'paragraph',
+      paragraph: { rich_text: richText(trimmed) },
+    })
+  }
+
+  return blocks
+}
+
+async function appendBlocks(pageId: string, blocks: NotionAppendBlock[]): Promise<void> {
+  for (let index = 0; index < blocks.length; index += 100) {
+    const chunk = blocks.slice(index, index + 100)
+    const res = await fetch(`${NOTION_API}/blocks/${pageId}/children`, {
+      method: 'PATCH',
+      headers: notionHeaders(),
+      body: JSON.stringify({ children: chunk }),
+    })
+    if (!res.ok) {
+      const err = await res.text()
+      throw new Error(`Notion append blocks error ${res.status}: ${err}`)
+    }
+  }
 }
 
 /**
@@ -149,4 +259,25 @@ export async function readProjectContext(pageId: string): Promise<string | null>
     console.warn(`[Notion] Could not read context page: ${err}`)
     return null
   }
+}
+
+export async function replacePageContent(pageId: string, markdown: string): Promise<void> {
+  if (!process.env.NOTION_TOKEN || !pageId) {
+    throw new Error('Missing NOTION_TOKEN or pageId')
+  }
+
+  const blocks = await fetchBlocks(pageId)
+  await Promise.all(
+    blocks
+      .map((block) => block.id)
+      .filter((id): id is string => Boolean(id))
+      .map((id) => archiveBlock(id)),
+  )
+
+  const children = markdownToBlocks(markdown)
+  if (children.length > 0) {
+    await appendBlocks(pageId, children)
+  }
+
+  cache.delete(pageId)
 }

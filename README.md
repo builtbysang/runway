@@ -1,70 +1,73 @@
 # Runway
 
-**Context layer for vibe coding.** Runway keeps Claude grounded — it stores your project's goals, tech stack, and conventions in Notion, breaks the work into structured Linear issues, then lets Claude implement each one without losing the plot.
+Runway is a local-first agent runtime for software projects.
 
-Vibe coding is fast but easy to get lost in. Runway gives it structure: a shared source of truth so every PR moves the project forward instead of sideways.
+It connects product intake, Linear planning, GitHub implementation, optional Notion sync, and Figma-aware issue drafting in one CLI-first workflow. This repo no longer runs as a webhook-driven web app. There is no automatic "Linear In Progress -> code immediately" behavior in the current version.
 
-Built on: Next.js · Claude claude-opus-4-6 · Linear · GitHub · Notion
+## Current workflow
 
----
+Runway is designed for a review-first flow:
 
-> 🇻🇳 **[Xem hướng dẫn tiếng Việt bên dưới](#tiếng-việt)**
+1. You send a feature request or product brief.
+2. `product-intake` analyzes the request and creates draft issues in Linear.
+3. You review those issues in Linear.
+4. If needed, you add or update the Figma link on the issue.
+5. `refine` upgrades issue quality and metadata when needed.
+6. Only when you explicitly decide to build do you run `run` for the approved issue(s).
 
----
+In other words:
 
-## What it does
+- Runway does not auto-code right after receiving a request.
+- Runway does not auto-trigger from Linear status changes in this version.
+- Figma should be treated as the source of truth whenever you provide it.
 
-Runway runs as a standalone service between your project management and your codebase. It has two agents:
+## Agents and workflows
 
-### Dev Agent
-Triggered automatically when a Linear issue is moved to **"In Progress"**.
+Runway currently has three main agent layers plus support workflows:
 
-```
-Linear "In Progress" → webhook → Claude reads files → implements → GitHub PR → Linear "In Review"
-```
+- `Product Agent`
+  - analyzes a request
+  - prefers Figma if provided
+  - creates small, review-ready draft issues in Linear
+  - does not code
 
-1. Receives Linear webhook
-2. Reads relevant source files from GitHub
-3. Calls Claude to implement the issue
-4. Creates a branch + commits changes + opens a PR
-5. Updates the Linear issue to "In Review" with a PR link and summary
+- `PM Agent`
+  - `plan`: turns a PRD into a roadmap using `phase -> release -> sprint -> issue`
+  - `refine`: upgrades issue descriptions, estimates, complexity, and workstream
+  - `report`: generates a markdown progress report from Linear
+  - `syncNotion`: writes a status snapshot into Notion when you explicitly run it
 
-### PM Agent
-Three tools for project management without opening Linear:
+- `Dev Agent`
+  - implements approved issues
+  - reads the target GitHub repo through the GitHub API
+  - can fetch brand SVGs from theSVG when needed
+  - opens a PR and moves the issue to `In Review`
 
-**Plan** — PRD text → full Linear roadmap
-```
-PRD text → Claude analyzes → Linear projects + sprints + issues created
-```
+Support workflows:
 
-**Refine** — Enrich backlog issues with Claude
-```
-Backlog issues → Claude reads codebase → adds AC + estimate + complexity label → updates Linear
-```
+- `sprint-review`: retrospective plus optional carry-over issues
+- `projects`: manage the local `projects.json` registry
 
-**Sprint Review** — Automated retrospective
-```
-Sprint end → Claude analyzes done/not-done → retro comment posted → carry-overs created
-```
+## Why it is CLI-first
 
-**Report** — Progress snapshot
-```
-Project/sprint → markdown status report with completion %, velocity, issue table
-```
+The product logic in this repo lives in:
 
----
+- `agents/`
+- `commands/`
+- `skills/`
 
-## Use cases
+The old `Next.js` and webhook layer has been removed. The current architecture is intentionally lightweight and explicit: you run the commands you want, when you want them to happen.
 
-- **Automate small-to-medium tickets** — bug fixes, UI tweaks, CRUD features, component additions
-- **Spin up a roadmap from a PRD** — paste a PRD, get a fully structured Linear roadmap in seconds
-- **Reuse across multiple projects** — one Runway deployment serves all your projects via `projects.json`
+## Requirements
 
----
+- `Node.js 20.x`
+- `npm`
+- LLM API access via `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`
+- Linear API access via `LINEAR_API_KEY`
+- GitHub API access via `GITHUB_TOKEN`
+- Optional Notion API access via `NOTION_TOKEN`
 
-## Setup
-
-### 1. Clone & install
+## Install
 
 ```bash
 git clone https://github.com/builtbysang/runway.git
@@ -72,9 +75,11 @@ cd runway
 npm install
 ```
 
-### 2. Configure your project
+## Configure projects
 
-Edit `projects.json` to add your project:
+Runway uses `projects.json` as a local registry for the projects it can operate on.
+
+Example:
 
 ```json
 {
@@ -82,443 +87,302 @@ Edit `projects.json` to add your project:
     "linearTeamId": "your-linear-team-id",
     "githubRepo": "yourorg/your-repo",
     "description": "What this project does",
-    "techStack": "Next.js / TypeScript / Tailwind CSS"
+    "techStack": "TypeScript / Node.js",
+    "notionContextPageId": "optional-notion-context-page-id",
+    "notionSyncPageId": "optional-notion-status-page-id"
   }
 }
 ```
 
-To find your Linear team ID: Linear → Settings → API → copy the team ID.
+Field reference:
 
-### 3. Set environment variables
+- `linearTeamId`: Linear team ID used for issues, cycles, labels, and projects
+- `githubRepo`: GitHub repo in `owner/name` format
+- `description`: human-readable project label used in reports
+- `techStack`: short context string passed into the LLM
+- `notionContextPageId`: optional Notion page ID used for compressed read-only project context
+- `notionSyncPageId`: optional Notion page ID used for explicit status sync output
+
+## Environment variables
+
+Create `.env.local`:
 
 ```bash
-# Anthropic
 ANTHROPIC_API_KEY=sk-ant-...
-
-# Linear
+OPENAI_API_KEY=sk-... # optional if using OpenAI / Codex
+RUNWAY_LLM_PROVIDER=anthropic # or openai
+RUNWAY_OPENAI_DEV_MODEL_SIMPLE=gpt-5.1-codex-mini
+RUNWAY_OPENAI_DEV_MODEL_NORMAL=gpt-5.1-codex-mini
+RUNWAY_OPENAI_DEV_MODEL_COMPLEX=gpt-5.1-codex
+RUNWAY_OPENAI_TEXT_MODEL=gpt-5-mini
 LINEAR_API_KEY=lin_api_...
-LINEAR_WEBHOOK_SECRET=lin_wh_...
-
-# GitHub
 GITHUB_TOKEN=ghp_...
+NOTION_TOKEN=secret_... # optional
 ```
 
-### 4. Deploy to Vercel
+Notes:
+
+- Set either `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`.
+- `RUNWAY_LLM_PROVIDER` lets you force `anthropic` or `openai`.
+- `GITHUB_TOKEN` needs write access if you want Runway to open PRs.
+- `LINEAR_API_KEY` should be able to read and write issues, comments, labels, cycles, and projects.
+- `NOTION_TOKEN` is optional. If it is missing, Runway skips Notion context enrichment and Notion sync.
+
+## Development commands
+
+During development:
 
 ```bash
-vercel deploy --prod
+npm run dev -- <command>
 ```
 
-Add env vars in Vercel dashboard under Settings → Environment Variables.
-
-### 5. Create the Linear webhook
-
-1. Go to Linear → **Settings → API → Webhooks → New Webhook**
-2. URL: `https://your-runway-url.vercel.app/api/webhook`
-3. Events: check **Issues**
-4. Copy the signing secret → set as `LINEAR_WEBHOOK_SECRET`
-
----
-
-## API
-
-### `POST /api/webhook`
-Receives Linear webhooks. Fires the Dev Agent when an issue transitions to "In Progress".
-
-Auto-triggered by Linear — no manual calls needed.
-
----
-
-### `POST /api/plan`
-Run the PM Agent to create a Linear roadmap from a PRD.
+After compiling:
 
 ```bash
-curl -X POST https://your-runway-url.vercel.app/api/plan \
-  -H "Content-Type: application/json" \
-  -d '{
-    "projectKey": "your-project",
-    "prd": "We are building a personal finance app that helps users track..."
-  }'
+npm run build
+npm start -- <command>
 ```
 
-Response:
-```json
-{
-  "ok": true,
-  "projectUrl": "https://linear.app/team/project/...",
-  "issueCount": 24,
-  "summary": "Created 3 releases with 24 issues for Personal Finance App"
-}
-```
-
----
-
----
-
-### `POST /api/refine`
-Enrich backlog issues with acceptance criteria, story-point estimates, and complexity labels.
+Quick sanity checks:
 
 ```bash
-curl -X POST https://your-runway-url.vercel.app/api/refine \
-  -H "Content-Type: application/json" \
-  -d '{
-    "projectKey": "your-project",
-    "stateName": "Backlog",
-    "limit": 10
-  }'
+npm run check
+npm run build
+npm run dev -- help
+```
+
+## Command reference
+
+### `product-intake`
+
+Analyze a feature request and create draft issues in Linear for human review.
+
+From a file:
+
+```bash
+npm run dev -- product-intake \
+  --project your-project \
+  --brief-file ./docs/brief.md
+```
+
+With Figma:
+
+```bash
+npm run dev -- product-intake \
+  --project your-project \
+  --brief-file ./docs/brief.md \
+  --figma-url https://www.figma.com/design/...
+```
+
+Use this when you want:
+
+- feature analysis before coding
+- UX/product framing before planning
+- draft issues on Linear that you can review manually
+
+This command does not code anything.
+
+### `plan`
+
+Turn a PRD into a roadmap using `phase -> release -> sprint -> issue`.
+
+From a file:
+
+```bash
+npm run dev -- plan \
+  --project your-project \
+  --prd-file ./docs/prd.md
+```
+
+Inline:
+
+```bash
+npm run dev -- plan \
+  --project your-project \
+  --prd "Build a personal finance app for couples."
+```
+
+Returns JSON with:
+
+- `projectUrl`
+- `issueCount`
+- `summary`
+
+### `refine`
+
+Enrich existing Linear issues using repo context plus PM logic.
+
+```bash
+npm run dev -- refine \
+  --project your-project \
+  --state Backlog \
+  --limit 10
 ```
 
 Or refine specific issues:
 
 ```bash
-curl -X POST https://your-runway-url.vercel.app/api/refine \
-  -H "Content-Type: application/json" \
-  -d '{
-    "projectKey": "your-project",
-    "issueIds": ["BUI-55", "BUI-56"]
-  }'
+npm run dev -- refine \
+  --project your-project \
+  --issues BUI-55,BUI-56
 ```
 
-Response:
-```json
-{
-  "ok": true,
-  "refined": 2,
-  "issues": [
-    { "identifier": "BUI-55", "estimate": 3, "complexity": "normal" },
-    { "identifier": "BUI-56", "estimate": 5, "complexity": "complex" }
-  ]
-}
-```
+Effects:
 
----
+- upgrades issue descriptions into a standard template
+- writes story point estimates
+- adds complexity labels
+- assigns workstream labels: `frontend`, `backend`, or `fullstack`
 
-### `POST /api/sprint/review`
-Run a sprint retrospective: Claude analyses done vs incomplete issues, posts a retro comment on each incomplete issue, and creates carry-over issues in the next sprint.
+### `run`
+
+Run the Dev Agent only for issues you want to build now.
+
+Explicit issues:
 
 ```bash
-curl -X POST https://your-runway-url.vercel.app/api/sprint/review \
-  -H "Content-Type: application/json" \
-  -d '{
-    "projectKey": "your-project",
-    "cycleId": "sprint-id",
-    "nextCycleId": "next-sprint-id"
-  }'
+npm run dev -- run \
+  --project your-project \
+  --issues BUI-32,BUI-33
 ```
 
-Response:
-```json
-{
-  "ok": true,
-  "sprintName": "Sprint 1",
-  "velocity": 18,
-  "plannedVelocity": 24,
-  "completionRate": 75,
-  "summary": "Strong sprint with good velocity...",
-  "recommendations": ["...", "..."],
-  "carryOversCreated": 2
-}
-```
-
----
-
-### `POST /api/report`
-Generate a markdown progress report for a project or sprint.
+By state:
 
 ```bash
-curl -X POST https://your-runway-url.vercel.app/api/report \
-  -H "Content-Type: application/json" \
-  -d '{
-    "projectKey": "your-project",
-    "cycleId": "sprint-id"
-  }'
+npm run dev -- run \
+  --project your-project \
+  --state Todo
 ```
 
-Response includes a `report` field with a full markdown table ready to paste into Notion, Slack, or a PR description.
-
----
-
-### `GET /api/projects`
-List all configured projects.
-
-### `POST /api/projects`
-Add a new project config at runtime.
+By cycle:
 
 ```bash
-curl -X POST https://your-runway-url.vercel.app/api/projects \
-  -H "Content-Type: application/json" \
-  -d '{
-    "key": "new-project",
-    "linearTeamId": "abc-123",
-    "githubRepo": "yourorg/new-project",
-    "description": "New project description"
-  }'
+npm run dev -- run \
+  --project your-project \
+  --cycle 234464c2-fba4-47a5-872f-7c342a7c8287
 ```
 
----
+Important:
 
-## Architecture
+- this is a manual execution step
+- it is not auto-triggered by Linear state changes in this version
 
-```
-app/
-  api/
-    plan/           # PM Agent — PRD → roadmap
-    run/            # Batch Dev Agent runner
-    refine/         # Issue refinement (AC + estimate + labels)
-    sprint/review/  # Sprint retrospective + carry-overs
-    report/         # Progress report (markdown)
-    projects/       # Project config management
+### `report`
 
-agents/
-  dev-agent.ts  # Issue → Claude tool-use loop → PR → Linear update
-  pm-agent.ts   # PRD → Claude → Linear roadmap
+Generate a markdown progress report from Linear data.
 
-skills/
-  claude.ts     # implementIssue(), analyzePRD(), refineIssues(),
-                # generateSprintReview(), buildProgressReport(), draftDocument()
-  github.ts     # readFile(), readDir(), createBranchAndPR()
-  linear.ts     # createProject/Cycle/Issue, updateIssue, listIssues,
-                # listCycles, updateIssueDetails, findOrCreateLabel, addLabelToIssue
-  notion.ts     # readProjectContext()
-
-projects.json   # Multi-project config
-vercel.json     # 60s timeout for AI functions
-```
-
----
-
-## Adding a new project
-
-1. Add an entry to `projects.json`
-2. Create a webhook in that project's Linear team pointing to the same Runway URL
-3. Done — Runway will automatically route issues to the correct repo
-
----
-
-## How the Dev Agent picks files
-
-Runway analyzes the issue title and description to decide which files to read before calling Claude. It always reads `app/page.tsx` and `package.json`, then adds relevant files based on keywords (e.g. "nav" → reads nav component, "invest" → reads investment page).
-
-You can extend `resolveFilePaths()` in `agents/dev-agent.ts` to match your project structure.
-
----
-
-## Limits
-
-- **Vercel Hobby plan:** Max 300s per function execution (set in `vercel.json`)
-- **Complex issues:** Claude works best on well-described, self-contained tickets. Vague tickets get a comment explaining what's missing.
-- **Large files:** If a file is very large, Claude may not have full context — keep descriptions specific
-
----
-
-## License
-
-MIT
-
----
-
-## Tiếng Việt
-
-**Runway** là context layer cho vibe coding — giải quyết vấn đề code nhanh nhưng hay bị bơi không biết mình đang đi đâu.
-
-Runway lưu mục tiêu, tech stack, và convention của dự án vào Notion làm source of truth. Từ đó chia nhỏ công việc thành các Linear issue có cấu trúc, rồi để Claude implement từng cái một — đúng hướng, không lạc đề, không phải nhắc lại context mỗi lần.
-
-Nền tảng: Next.js · Claude claude-opus-4-6 · Linear · GitHub · Notion
-
----
-
-### Runway làm gì
-
-Runway chạy như một service độc lập kết nối giữa quản lý dự án và codebase của bạn. Gồm hai agent:
-
-#### Dev Agent
-Tự động kích hoạt khi issue Linear được chuyển sang **"In Progress"**.
-
-```
-Linear "In Progress" → webhook → Claude đọc file → implement → GitHub PR → Linear "In Review"
-```
-
-1. Nhận webhook từ Linear
-2. Claude tự khám phá repo — đọc các file cần thiết qua tool `read_file` / `list_dir`
-3. Implement issue bằng tool `write_file`
-4. Tạo branch + commit + mở PR trên GitHub
-5. Cập nhật issue Linear sang "In Review" kèm link PR và tóm tắt
-
-**Chọn model tự động theo độ phức tạp:**
-- `simple` / `easy` / `xs` → claude-haiku-4-5 (nhanh, rẻ)
-- mặc định → claude-sonnet-4-5
-- `complex` / `hard` / `xl` → claude-opus-4-6 (mạnh nhất)
-
-#### PM Agent
-Bốn công cụ quản lý dự án, không cần mở Linear:
-
-**Plan** — PRD → roadmap Linear đầy đủ
-```
-Nội dung PRD → Claude phân tích → Linear projects + sprints + issues
-```
-
-**Refine** — Làm giàu backlog issues
-```
-Backlog issues → Claude đọc codebase → thêm AC + estimate + label complexity → cập nhật Linear
-```
-
-**Sprint Review** — Retrospective tự động
-```
-Cuối sprint → Claude phân tích done/not-done → comment retro → tạo carry-over issues
-```
-
-**Report** — Snapshot tiến độ
-```
-Project/sprint → báo cáo markdown với % hoàn thành, velocity, bảng issue
-```
-
----
-
-### Cài đặt
-
-#### 1. Clone & cài dependencies
+Whole project:
 
 ```bash
-git clone https://github.com/builtbysang/runway.git
-cd runway
-npm install
+npm run dev -- report --project your-project
 ```
 
-#### 2. Cấu hình dự án
-
-Sửa `projects.json` để thêm dự án của bạn:
-
-```json
-{
-  "ten-du-an": {
-    "linearTeamId": "linear-team-id-của-bạn",
-    "githubRepo": "org/repo",
-    "description": "Mô tả dự án",
-    "techStack": "Next.js / TypeScript / Tailwind CSS",
-    "notionContextPageId": "notion-page-id (tuỳ chọn)"
-  }
-}
-```
-
-Tìm Linear team ID: Linear → Settings → API → copy team ID.
-
-`notionContextPageId` (tuỳ chọn): ID trang Notion chứa Brief/PRD của dự án. Runway đọc và nén thành context cho Claude (~300 token).
-
-#### 3. Thiết lập biến môi trường
+Single sprint:
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...
-LINEAR_API_KEY=lin_api_...
-LINEAR_WEBHOOK_SECRET=lin_wh_...
-GITHUB_TOKEN=ghp_...
-NOTION_TOKEN=ntn_...   # tuỳ chọn
+npm run dev -- report \
+  --project your-project \
+  --cycle sprint-id
 ```
 
-#### 4. Deploy lên Vercel
+Returns JSON with:
+
+- `stats`
+- `report`
+
+The `report` field is ready to paste into Notion, Slack, or a PR.
+
+### `sync-notion`
+
+Write a status snapshot into Notion when you explicitly want it.
 
 ```bash
-vercel deploy --prod
+npm run dev -- sync-notion --project your-project
 ```
 
-Thêm env vars tại Vercel dashboard → Settings → Environment Variables.
-
-#### 5. Tạo webhook trên Linear
-
-1. Linear → **Settings → API → Webhooks → New Webhook**
-2. URL: `https://runway-url.vercel.app/api/webhook`
-3. Events: chọn **Issues**
-4. Copy signing secret → đặt làm `LINEAR_WEBHOOK_SECRET`
-
----
-
-### API
-
-#### `POST /api/webhook`
-Nhận webhook từ Linear. Chạy Dev Agent khi issue chuyển sang "In Progress".
-
-#### `POST /api/run`
-Chạy hàng loạt Dev Agent trên nhiều issue cùng lúc (tuần tự).
+Or target a specific page:
 
 ```bash
-curl -X POST https://runway-url.vercel.app/api/run \
-  -H "Content-Type: application/json" \
-  -d '{
-    "projectKey": "ten-du-an",
-    "stateName": "Todo",
-    "cycleId": "sprint-id (tuỳ chọn)"
-  }'
+npm run dev -- sync-notion \
+  --project your-project \
+  --page-id your-notion-page-id
 ```
 
-Runway tự động chuyển từng issue sang "In Progress" rồi implement lần lượt. Trả về kết quả ngay — theo dõi tiến độ trên Linear.
+This command is manual by design so you do not spend tokens syncing Notion continuously.
 
-#### `POST /api/refine`
-Làm giàu backlog issues: Claude đọc codebase, thêm Acceptance Criteria, estimate (story points), và label complexity (simple/normal/complex).
+### `sprint-review`
+
+Generate a sprint retrospective and optionally create carry-over issues.
 
 ```bash
-curl -X POST https://runway-url.vercel.app/api/refine \
-  -H "Content-Type: application/json" \
-  -d '{"projectKey": "ten-du-an", "stateName": "Backlog", "limit": 10}'
+npm run dev -- sprint-review \
+  --project your-project \
+  --cycle sprint-id \
+  --next-cycle next-sprint-id
 ```
 
-#### `POST /api/sprint/review`
-Retrospective tự động: phân tích sprint done/not-done, post comment retro, tạo carry-over issues vào sprint tiếp.
+### `projects list`
+
+List the current `projects.json` registry.
 
 ```bash
-curl -X POST https://runway-url.vercel.app/api/sprint/review \
-  -H "Content-Type: application/json" \
-  -d '{"projectKey": "ten-du-an", "cycleId": "sprint-id", "nextCycleId": "next-sprint-id"}'
+npm run dev -- projects list
 ```
 
-#### `POST /api/report`
-Báo cáo tiến độ dạng markdown — dán vào Notion, Slack, hoặc PR description.
+### `projects add`
+
+Add a new project entry to `projects.json`.
 
 ```bash
-curl -X POST https://runway-url.vercel.app/api/report \
-  -H "Content-Type: application/json" \
-  -d '{"projectKey": "ten-du-an", "cycleId": "sprint-id"}'
+npm run dev -- projects add \
+  --key your-project \
+  --team-id your-linear-team-id \
+  --repo yourorg/your-repo \
+  --description "What this project does" \
+  --tech-stack "TypeScript / Node.js" \
+  --notion-page-id optional-notion-context-page-id \
+  --notion-sync-page-id optional-notion-status-page-id
 ```
 
-#### `POST /api/plan`
-Tạo roadmap Linear từ PRD.
+## Helper script
+
+There is also a thin wrapper script:
 
 ```bash
-curl -X POST https://runway-url.vercel.app/api/plan \
-  -H "Content-Type: application/json" \
-  -d '{
-    "projectKey": "ten-du-an",
-    "prd": "Chúng tôi đang xây dựng ứng dụng tài chính cá nhân..."
-  }'
+./scripts/run-sprint.sh --project your-project --cycle sprint-id
 ```
 
----
+It simply forwards arguments to:
 
-### Kiến trúc
-
-```
-app/
-  api/
-    webhook/   # Linear webhook → Dev Agent
-    run/       # Chạy hàng loạt issues
-    plan/      # PM Agent
-    projects/  # Quản lý config
-
-agents/
-  dev-agent.ts  # Issue → Claude tool-use loop → PR → Linear update
-  pm-agent.ts   # PRD → Claude → Linear roadmap
-
-skills/
-  claude.ts   # implementIssue(), analyzePRD(), draftDocument()
-  github.ts   # readFile(), readDir(), createBranchAndPR()
-  linear.ts   # createIssue(), updateIssue(), listIssues(), addComment()
-  notion.ts   # readProjectContext() — đọc & cache context từ Notion
-
-projects.json  # Config đa dự án
+```bash
+npm run dev -- run ...
 ```
 
----
+## Repo layout
 
-### Giới hạn
+```text
+agents/       Agent orchestration logic
+commands/     CLI command handlers
+lib/          Shared config and argument parsing helpers
+skills/       Integrations for LLMs, GitHub, Linear, Notion, and theSVG
+scripts/      Small shell wrappers around the CLI
+projects.json Local project registry
+cli.ts        Main entrypoint
+```
 
-- **Vercel Hobby plan:** Tối đa 60s mỗi function — dùng `/api/run` cho các task dài
-- **Issue phức tạp:** Claude hoạt động tốt nhất với ticket được mô tả rõ ràng, tự chứa. Issue mơ hồ sẽ nhận comment giải thích còn thiếu gì
-- **File lớn:** Claude tự quyết định đọc file nào — mô tả issue càng cụ thể càng tốt
+## Current limitations
+
+- Runway is local-first. There is no built-in HTTP server or webhook listener in this version.
+- The Dev Agent works against GitHub-hosted repos through the GitHub API, not your local filesystem checkout.
+- `run` is manual. Moving a Linear issue to `In Progress` does not auto-execute code.
+- Phase structure exists in the roadmap schema and generated Linear descriptions, but Linear itself is still modeled mainly through projects, cycles, and issues.
+- There is no built-in reviewer or QA agent yet.
+
+## Suggested next steps
+
+If you want to extend Runway next, the highest-leverage additions are:
+
+- `Reviewer Agent` to review generated diffs before PR handoff
+- `QA Agent` to run tests/build checks before PR creation
+- stricter approval gates before `run`
+- a tiny webhook adapter only if you explicitly want automation again
