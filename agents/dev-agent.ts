@@ -90,7 +90,12 @@ export async function runDevAgent(issue: LinearIssue): Promise<void> {
     })
 
     if (result.changes.length === 0) {
-      await addComment(issue.id, `⚠️ **Runway** couldn't implement this automatically:\n\n${result.summary}`)
+      console.warn(`[Dev Agent] ${issue.identifier} — no changes returned by LLM. Summary: ${result.summary}`)
+      await updateIssue(issue.id, {
+        statusName: 'Todo',
+        teamId: issue.teamId,
+        comment: `⚠️ **Runway** couldn't implement this automatically:\n\n${result.summary}`,
+      })
       return
     }
 

@@ -111,7 +111,12 @@ export async function updateIssue(
 ) {
   if (opts.statusName && opts.teamId) {
     const stateId = await findStateId(opts.teamId, opts.statusName)
-    if (stateId) await updateIssueState(issueId, stateId)
+    if (stateId) {
+      await updateIssueState(issueId, stateId)
+      console.log(`[Linear] ${issueId} → ${opts.statusName}`)
+    } else {
+      console.warn(`[Linear] State "${opts.statusName}" not found for team ${opts.teamId} — status not updated`)
+    }
   }
   if (opts.comment) await addComment(issueId, opts.comment)
 }
