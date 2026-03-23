@@ -86,7 +86,10 @@ Context priority:
 1. `.runway/steering/product.md`
 2. `.runway/steering/structure.md`
 3. `.runway/steering/tech.md`
-4. optional Notion context page
+4. `.runway/steering/02-ux-rules.md`
+5. `.runway/steering/03-visual-rules.md`
+6. `.runway/steering/04-design-system.md`
+7. optional Notion context page
 
 The goal is to keep agents grounded with high-signal project rules without wasting tokens.
 
@@ -204,6 +207,9 @@ Runway supports steering docs in the target repo:
 .runway/steering/product.md
 .runway/steering/structure.md
 .runway/steering/tech.md
+.runway/steering/02-ux-rules.md
+.runway/steering/03-visual-rules.md
+.runway/steering/04-design-system.md
 ```
 
 Generate them with:
@@ -227,6 +233,9 @@ Use steering docs for:
 - product direction
 - repo/module boundaries
 - engineering constraints and conventions
+- UX principles, flows, hierarchy, writing, and behavior
+- visual style, color direction, mood, and art direction
+- design tokens, components, patterns, states, and layout rules
 
 ## Reports
 

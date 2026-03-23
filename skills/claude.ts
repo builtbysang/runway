@@ -906,6 +906,9 @@ export interface SteeringDocsDraft {
   product: string
   structure: string
   tech: string
+  uxRules: string
+  visualRules: string
+  designSystem: string
 }
 
 export async function draftDocument(opts: { context: string; docType: DocType }): Promise<DocumentDraft> {
@@ -946,10 +949,13 @@ export async function draftSteeringDocs(opts: {
         product: { type: 'string' },
         structure: { type: 'string' },
         tech: { type: 'string' },
+        uxRules: { type: 'string' },
+        visualRules: { type: 'string' },
+        designSystem: { type: 'string' },
       },
-      required: ['product', 'structure', 'tech'],
+      required: ['product', 'structure', 'tech', 'uxRules', 'visualRules', 'designSystem'],
     },
-    userPrompt: `Create three steering markdown documents for an engineering project.
+    userPrompt: `Create six steering markdown documents for an engineering project.
 
 ${contextSection}Source context:
 ${opts.context}
@@ -961,6 +967,9 @@ Return JSON with:
 - product: markdown for product direction and UX intent
 - structure: markdown for repo/module boundaries and implementation structure
 - tech: markdown for stack, architecture rules, constraints, and engineering conventions
+- uxRules: markdown for 02-ux-rules.md
+- visualRules: markdown for 03-visual-rules.md
+- designSystem: markdown for 04-design-system.md
 
 Requirements:
 - write concise, high-signal markdown that agents can read quickly
@@ -972,7 +981,10 @@ Requirements:
 Document guidance:
 - product.md should cover problem framing, target users, goals, non-goals, UX principles, success signals
 - structure.md should cover domain boundaries, major modules, where new code should live, file/folder conventions, integration seams
-- tech.md should cover stack, architectural constraints, coding patterns, data/API rules, testing expectations, deployment/runtime assumptions`,
+- tech.md should cover stack, architectural constraints, coding patterns, data/API rules, testing expectations, deployment/runtime assumptions
+- 02-ux-rules.md should cover UX principles, primary flows, hierarchy, writing guidance, and interaction behavior
+- 03-visual-rules.md should cover visual style, color direction, mood, and art direction
+- 04-design-system.md should cover tokens, components, patterns, states, and layout system`,
   })
 
   return JSON.parse(stripCodeFences(raw)) as SteeringDocsDraft
