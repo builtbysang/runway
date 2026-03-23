@@ -909,6 +909,7 @@ export interface SteeringDocsDraft {
   uxRules: string
   visualRules: string
   designSystem: string
+  components: string
 }
 
 export async function draftDocument(opts: { context: string; docType: DocType }): Promise<DocumentDraft> {
@@ -952,10 +953,11 @@ export async function draftSteeringDocs(opts: {
         uxRules: { type: 'string' },
         visualRules: { type: 'string' },
         designSystem: { type: 'string' },
+        components: { type: 'string' },
       },
-      required: ['product', 'structure', 'tech', 'uxRules', 'visualRules', 'designSystem'],
+      required: ['product', 'structure', 'tech', 'uxRules', 'visualRules', 'designSystem', 'components'],
     },
-    userPrompt: `Create six steering markdown documents for an engineering project.
+    userPrompt: `Create seven steering markdown documents for an engineering project.
 
 ${contextSection}Source context:
 ${opts.context}
@@ -967,9 +969,10 @@ Return JSON with:
 - product: markdown for product direction and UX intent
 - structure: markdown for repo/module boundaries and implementation structure
 - tech: markdown for stack, architecture rules, constraints, and engineering conventions
-- uxRules: markdown for 02-ux-rules.md
-- visualRules: markdown for 03-visual-rules.md
-- designSystem: markdown for 04-design-system.md
+- uxRules: markdown for ux-rules.md
+- visualRules: markdown for visual-rules.md
+- designSystem: markdown for design-system.md
+- components: markdown for components.md
 
 Requirements:
 - write concise, high-signal markdown that agents can read quickly
@@ -977,14 +980,48 @@ Requirements:
 - avoid generic filler
 - if the source is Vietnamese, write in Vietnamese
 - each document should be practical and opinionated
+- separate product, UX, visual, system, and technical layers cleanly
+- prefer implementation-aware rules over abstract brand language
+- for visual/style language, keep roughly 30% concept and 70% usable rules
+- include states, constraints, and reusable patterns where relevant
+- use clean heading hierarchy and practical language that designers, developers, and AI agents can all use
 
 Document guidance:
 - product.md should cover problem framing, target users, goals, non-goals, UX principles, success signals
 - structure.md should cover domain boundaries, major modules, where new code should live, file/folder conventions, integration seams
 - tech.md should cover stack, architectural constraints, coding patterns, data/API rules, testing expectations, deployment/runtime assumptions
-- 02-ux-rules.md should cover UX principles, primary flows, hierarchy, writing guidance, and interaction behavior
-- 03-visual-rules.md should cover visual style, color direction, mood, and art direction
-- 04-design-system.md should cover tokens, components, patterns, states, and layout system`,
+- ux-rules.md should use a clear structure with:
+  - Experience Goals
+  - Interaction Principles
+  - Hierarchy Rules
+  - Navigation Rules
+  - Form Rules
+  - Empty States
+  - Error States
+  - Content and Microcopy
+  - Accessibility
+  - Responsive Behavior
+- ux-rules.md should explain experience goals, interaction principles, information hierarchy, navigation behavior, form behavior, empty/error handling, microcopy rules, accessibility, and responsive priority shifts
+- visual-rules.md should use a clear structure with:
+  - Creative North Star
+  - Visual Character
+  - Layout Style
+  - Color Philosophy
+  - Typography Voice
+  - Surface and Elevation
+  - Component Styling Principles
+  - Do's and Don'ts
+- visual-rules.md should explain visual ambition, dominant qualities, layout behavior, color role, typography role, surface treatment, and how the visual system affects components
+- design-system.md should cover tokens, naming logic, components, patterns, states, accessibility minimums, and layout system
+- components.md should define reusable UI components in a spec-like format covering purpose, anatomy, variants, sizes, states, content rules, usage rules, accessibility, responsive behavior, and implementation notes where helpful
+- include at least one strong example component entry format that other components can follow
+- for button-like actions, prefer labels that start with a verb and avoid vague copy unless context makes it obvious
+
+Writing discipline:
+- do not write vague design poetry with no operational value
+- explain opinionated rules in a way that supports implementation
+- distinguish principles from implementation details
+- make terminology consistent across all seven documents`,
   })
 
   return JSON.parse(stripCodeFences(raw)) as SteeringDocsDraft

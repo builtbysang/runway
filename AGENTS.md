@@ -17,3 +17,4 @@ Runway is a CLI-first TypeScript runtime. Treat it as an automation service, not
 - Keep commands composable so a future webhook or scheduler can call the same handlers.
 - Avoid reintroducing a full app framework unless there is a real product need for one.
 - Do not hardcode secrets, repo paths, cycle IDs, or environment-specific values in scripts.
+- When generating product, UX, visual, or design-system Markdown, follow [docs/design-markdown-guide.md](/Users/Sang/Claude%20Code/runway/docs/design-markdown-guide.md).

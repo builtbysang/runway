@@ -86,10 +86,11 @@ Thứ tự ưu tiên context:
 1. `.runway/steering/product.md`
 2. `.runway/steering/structure.md`
 3. `.runway/steering/tech.md`
-4. `.runway/steering/02-ux-rules.md`
-5. `.runway/steering/03-visual-rules.md`
-6. `.runway/steering/04-design-system.md`
-7. optional Notion context page
+4. `.runway/steering/ux-rules.md`
+5. `.runway/steering/visual-rules.md`
+6. `.runway/steering/design-system.md`
+7. `.runway/steering/components.md`
+8. optional Notion context page
 
 Mục tiêu là để agent luôn có rule quan trọng của project mà không tốn nhiều token.
 
@@ -207,9 +208,10 @@ Runway hỗ trợ steering docs của Runway trong repo đích:
 .runway/steering/product.md
 .runway/steering/structure.md
 .runway/steering/tech.md
-.runway/steering/02-ux-rules.md
-.runway/steering/03-visual-rules.md
-.runway/steering/04-design-system.md
+.runway/steering/ux-rules.md
+.runway/steering/visual-rules.md
+.runway/steering/design-system.md
+.runway/steering/components.md
 ```
 
 Tạo chúng bằng:
@@ -236,6 +238,7 @@ Steering docs nên được dùng cho:
 - UX principles, flow, hierarchy, writing, behavior
 - visual style, color direction, mood, art direction
 - tokens, components, patterns, states, layout system
+- component specs có thể tái sử dụng, anatomy, variants, state behavior
 
 ## Reports
 
