@@ -138,6 +138,7 @@ Ví dụ:
     "localRepoPath": "/absolute/path/to/your/local/repo",
     "description": "Vietnamese personal finance app",
     "techStack": "Next.js / TypeScript / Tailwind / Supabase",
+    "linearReviewStateName": "In Review",
     "notionContextPageId": "optional-notion-context-page-id",
     "notionSyncPageId": "optional-notion-sync-page-id"
   }
@@ -151,6 +152,7 @@ Ví dụ:
 - `localRepoPath`: path tuyệt đối tới codebase local mà Runway sẽ dùng cho implementation và steering docs
 - `description`: tên hiển thị dễ đọc cho project
 - `techStack`: ngữ cảnh kỹ thuật ngắn gọn cho agent
+- `linearReviewStateName`: tên state review tùy biến của Linear để Runway chuyển issue sau khi mở PR
 - `notionContextPageId`: nguồn context chỉ để đọc
 - `notionSyncPageId`: nơi ghi status lên Notion nếu cần
 

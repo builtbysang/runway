@@ -7,6 +7,7 @@ export interface ProjectConfig {
   localRepoPath?: string
   description?: string
   techStack?: string
+  linearReviewStateName?: string
   notionContextPageId?: string
   notionSyncPageId?: string
 }

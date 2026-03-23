@@ -25,15 +25,46 @@ async function gql<TData = Record<string, unknown>>(query: string, variables?: R
 }
 
 export async function getWorkflowStates(teamId: string) {
-  const data = await gql(`query { team(id: "${teamId}") { states { nodes { id name } } } }`) as {
-    team: { states: { nodes: { id: string; name: string }[] } }
+  const data = await gql(`query { team(id: "${teamId}") { states { nodes { id name type } } } }`) as {
+    team: { states: { nodes: { id: string; name: string; type?: string | null }[] } }
   }
-  return data.team.states.nodes as { id: string; name: string }[]
+  return data.team.states.nodes as { id: string; name: string; type?: string | null }[]
 }
 
 export async function findStateId(teamId: string, name: string): Promise<string | null> {
   const states = await getWorkflowStates(teamId)
   return states.find((s) => s.name.toLowerCase() === name.toLowerCase())?.id || null
+}
+
+export const REVIEW_STATE_ALIASES = [
+  'In Review',
+  'Review',
+  'Code Review',
+  'For Review',
+  'Ready for Review',
+  'Ready for QA',
+  'QA',
+  'Testing',
+] as const
+
+export async function findStateIdByNames(teamId: string, names: string[]): Promise<string | null> {
+  const states = await getWorkflowStates(teamId)
+  const normalizedNames = names.map((name) => name.toLowerCase())
+
+  const exactMatch = states.find((state) => normalizedNames.includes(state.name.toLowerCase()))
+  if (exactMatch) {
+    return exactMatch.id
+  }
+
+  return null
+}
+
+export async function findReviewStateId(teamId: string, preferredName?: string): Promise<string | null> {
+  const candidateNames = preferredName
+    ? [preferredName, ...REVIEW_STATE_ALIASES.filter((name) => name.toLowerCase() !== preferredName.toLowerCase())]
+    : [...REVIEW_STATE_ALIASES]
+
+  return findStateIdByNames(teamId, candidateNames)
 }
 
 export async function createProject(input: {
@@ -88,12 +119,16 @@ export async function createIssue(input: {
 }
 
 export async function updateIssueState(issueId: string, stateId: string) {
-  await gql(
+  const data = await gql(
     `mutation UpdateIssue($id: String!, $stateId: String!) {
       issueUpdate(id: $id, input: { stateId: $stateId }) { success }
     }`,
     { id: issueId, stateId }
-  )
+  ) as { issueUpdate: { success: boolean } }
+
+  if (!data.issueUpdate.success) {
+    throw new Error(`Linear rejected state update for issue ${issueId} -> ${stateId}`)
+  }
 }
 
 export async function addComment(issueId: string, body: string) {
@@ -107,18 +142,26 @@ export async function addComment(issueId: string, body: string) {
 
 export async function updateIssue(
   issueId: string,
-  opts: { statusName?: string; teamId?: string; comment?: string }
+  opts: { statusName?: string; teamId?: string; comment?: string; fallbackStatusNames?: string[] }
 ) {
+  let stateUpdated = false
+
   if (opts.statusName && opts.teamId) {
-    const stateId = await findStateId(opts.teamId, opts.statusName)
+    const stateId = await findStateIdByNames(
+      opts.teamId,
+      [opts.statusName, ...(opts.fallbackStatusNames ?? [])],
+    )
     if (stateId) {
       await updateIssueState(issueId, stateId)
+      stateUpdated = true
       console.log(`[Linear] ${issueId} → ${opts.statusName}`)
     } else {
       console.warn(`[Linear] State "${opts.statusName}" not found for team ${opts.teamId} — status not updated`)
     }
   }
   if (opts.comment) await addComment(issueId, opts.comment)
+
+  return { stateUpdated }
 }
 
 export interface LinearIssueRecord {

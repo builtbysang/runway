@@ -7,7 +7,7 @@
  */
 import { hasLlmCredentials, implementIssue } from '../skills/claude'
 import { createBranchAndPR } from '../skills/github'
-import { updateIssue, addComment, getIssueLabels } from '../skills/linear'
+import { updateIssue, addComment, getIssueLabels, REVIEW_STATE_ALIASES } from '../skills/linear'
 import { readProjectContext } from '../skills/notion'
 import { readSteeringContext } from '../skills/steering'
 import projectsConfig from '../projects.json'
@@ -17,6 +17,7 @@ type ProjectConfig = {
   githubRepo: string
   localRepoPath?: string
   techStack?: string
+  linearReviewStateName?: string
   notionContextPageId?: string
 }
 
@@ -114,11 +115,21 @@ export async function runDevAgent(issue: LinearIssue): Promise<void> {
     })
 
     // 5. Linear → In Review + PR link
-    await updateIssue(issue.id, {
-      statusName: 'In Review',
+    const reviewUpdate = await updateIssue(issue.id, {
+      statusName: config.linearReviewStateName || 'In Review',
+      fallbackStatusNames: config.linearReviewStateName
+        ? REVIEW_STATE_ALIASES.filter((name) => name.toLowerCase() !== config.linearReviewStateName?.toLowerCase())
+        : REVIEW_STATE_ALIASES.filter((name) => name !== 'In Review'),
       teamId: issue.teamId,
       comment: `✅ **PR ready:** ${pr.url}\n\n**Summary:** ${result.summary}`,
     })
+
+    if (!reviewUpdate.stateUpdated) {
+      await addComment(
+        issue.id,
+        '⚠️ **Runway** opened the PR successfully but could not move this issue into a review state. Set `linearReviewStateName` in `projects.json` if your team uses a custom review column name.',
+      )
+    }
 
     console.log(`[Dev Agent] Done: ${issue.identifier} → ${pr.url}`)
   } catch (error) {

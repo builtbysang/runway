@@ -138,6 +138,7 @@ Example:
     "localRepoPath": "/absolute/path/to/your/local/repo",
     "description": "Vietnamese personal finance app",
     "techStack": "Next.js / TypeScript / Tailwind / Supabase",
+    "linearReviewStateName": "In Review",
     "notionContextPageId": "optional-notion-context-page-id",
     "notionSyncPageId": "optional-notion-sync-page-id"
   }
@@ -151,6 +152,7 @@ Field reference:
 - `localRepoPath`: absolute path to the local codebase Runway should use for implementation and steering docs
 - `description`: human-readable project label
 - `techStack`: short context string passed into the agents
+- `linearReviewStateName`: optional custom Linear workflow state name to use after Runway opens a PR
 - `notionContextPageId`: optional read-only context source
 - `notionSyncPageId`: optional Notion status output target
 
