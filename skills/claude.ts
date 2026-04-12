@@ -652,20 +652,27 @@ export async function refineIssues(opts: {
 
   const raw = await generateStructuredText({
     schema: {
-      type: 'array',
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          issueId: { type: 'string' },
-          description: { type: 'string' },
-          estimate: { type: 'number' },
-          complexity: { type: 'string', enum: ['simple', 'normal', 'complex'] },
-          workstream: { type: 'string', enum: ['frontend', 'backend', 'fullstack'] },
-          summary: { type: 'string' },
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        issues: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              issueId: { type: 'string' },
+              description: { type: 'string' },
+              estimate: { type: 'number' },
+              complexity: { type: 'string', enum: ['simple', 'normal', 'complex'] },
+              workstream: { type: 'string', enum: ['frontend', 'backend', 'fullstack'] },
+              summary: { type: 'string' },
+            },
+            required: ['issueId', 'description', 'estimate', 'complexity', 'workstream', 'summary'],
+          },
         },
-        required: ['issueId', 'description', 'estimate', 'complexity', 'workstream', 'summary'],
       },
+      required: ['issues'],
     },
     userPrompt: `You are a senior PM and tech lead. Refine these Linear issues for a ${opts.techStack || 'Next.js'} project.
 
@@ -682,8 +689,8 @@ ${ISSUE_DESCRIPTION_FORMAT}
 Issues to refine:
 ${issueList}
 
-Return ONLY a JSON array (no markdown fences):
-[{"issueId":"<exact issue id>","description":"<full markdown using the required template>","estimate":<number>,"complexity":"<simple|normal|complex>","workstream":"<frontend|backend|fullstack>","summary":"<one line>"}]
+Return ONLY JSON (no markdown fences):
+{"issues":[{"issueId":"<exact issue id>","description":"<full markdown using the required template>","estimate":<number>,"complexity":"<simple|normal|complex>","workstream":"<frontend|backend|fullstack>","summary":"<one line>"}]}
 
 Important:
 - keep "## Figma Design" even when there is no design yet; use "- Link: TBD"
@@ -695,7 +702,8 @@ Important:
 - preserve any existing useful scope details from the original issue`,
   })
   const cleaned = raw.replace(/^```(?:json)?\n?/m, '').replace(/\n?```$/m, '').trim()
-  return JSON.parse(cleaned) as RefinedIssue[]
+  const parsed = JSON.parse(cleaned) as { issues: RefinedIssue[] }
+  return parsed.issues
 }
 
 export async function analyzeFeatureRequest(opts: {
