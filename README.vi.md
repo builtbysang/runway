@@ -1,4 +1,4 @@
-# Runway
+# Runway Board
 
 [English](./README.md)
 
