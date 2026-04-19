@@ -1,9 +1,9 @@
 ---
-name: bric-orchestrator
+name: runway-orchestrator
 description: Use when coordinating multiple development streams, dispatching agents for independent tasks, resuming a multi-agent workflow, or checking stream status via handover files
 ---
 
-# Bric Orchestrator
+# Runway Orchestrator
 
 ## Overview
 
