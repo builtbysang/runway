@@ -1,0 +1,54 @@
+# Runway: the self-running loop for any project
+
+Runway keeps a software project healthy and moves its backlog forward without the owner driving it issue by issue. The owner reports pain points and gives direction now and then; Runway does the rest and reports once per run. It is a process plus two prompts plus one scheduled task, and it applies to any repository registered in `projects.json`. Pumpkin Art was the first project; nothing here is specific to it.
+
+## The shape
+
+| Piece | Where | What it is |
+|---|---|---|
+| Registry | `projects.json` | One entry per project: repo path, GitHub repo, Linear project, status issue, cadence, loop on or off |
+| Dispatcher | `runway/dispatcher.md` | The prompt of the scheduled task "Runway": reads the registry and starts one run per project |
+| Autopilot | `runway/autopilot.md` | The prompt of one run on one project: may I run, routine health, one issue, one role step, report |
+| Board | Linear, one project per repository | Backlog is the inbox; roles and releases are labels and milestones; the status issue is the dashboard |
+| Proof | the repository's CI | Build, lint, tests on every pull request; a change without a check that fails without it is a proposal, not a change |
+
+## The process (what the owner does, what Runway does)
+
+1. **Vision and releases first.** A project starts with a document the owner confirms: the vision in a paragraph, what done looks like, the quarter's goals, and releases R0, R1, R2 with a date and one sentence of what the owner can use when each ships. Work that serves no release waits. The owner reviews the next release's scope once a week.
+2. **Audit before build.** A new area starts with three read-only audits: UX (walk every flow on seeded data, count clicks, name what the screen fails to say), UI (every screen at five widths, numbers from the DOM, screenshots attached to the issues), motion (what exists, what each place earns). Findings become issues with a release. Fixes come from the ranked list, never from the latest message.
+3. **Roles, one step per run.** Each issue carries a `Role` label: UX research (asks the owner, reproduces, attaches a screenshot), PM (brief, done condition, release, protected zone or not), Design (screen spec), Dev (one issue, one branch, one pull request, about 200 lines), QA (runs the checks, clicks through, screenshots, pass or fail). A run does one role step on one issue and hands it to the next role.
+4. **Two tiers of change.** Done on its own: anything with a check that fails without it, dependency and security updates with green tests, bug fixes with a reproducing test. Proposal only (`Needs approval`): protected zones such as sign-in, migrations, deploy, CI config, agent rules.
+5. **No questions in this mode.** Where an issue has open questions, Runway writes a default on the issue and builds with it; the owner changes it in the weekly review. Only secrets and owner-only settings are reported as blocked.
+6. **Report, do not narrate.** One comment per run on the status issue: did, waits for approval, stuck. The status issue's description holds last run and token use. The owner reads that issue and the `Needs approval` filter, not pull requests.
+
+## Guardrails (every project, every run)
+
+1. Work comes only from the board and the routine list (install, lint, build, tests, dependency and security scan). No self-invented features, no drive-by fixes.
+2. One issue, one branch, one pull request per run. Never push to `main`, never merge, never deploy, never touch `.env*`, never enter a credential.
+3. Reproduce before fixing; cannot reproduce means `Blocked` with a question.
+4. Every change ships with a check that fails without it.
+5. The same failure twice in a row: stop, comment, `Blocked`.
+6. Protected zones are proposal only.
+7. No new dependency, no new rule or skill file, delete nothing that was there before.
+8. About 200 changed lines per pull request; bigger work is split.
+9. Before adding anything, show it does not already exist.
+10. A time ceiling per run; at the ceiling, stop and report.
+11. `PAUSE` on the status issue stops the project; the owner adds or removes it.
+12. Five idle runs or three failed runs in a row: the project auto-stops and says so.
+13. Build in a separate git worktree; never change the branch of the owner's checkout.
+
+## Preparing a project (R0)
+
+Before the loop is switched on: CI on the project's GitHub Actions with build, lint and a handful of smoke tests; an `AGENTS.md` in the repository root (how to run it, the checks, the protected zones); the three audits; a groomed backlog where every issue has a release. A private git dependency needs a repository secret only the owner can add. Then the registry entry gets `"loop": true` and `PAUSE` comes off the status issue.
+
+## Adding a project
+
+1. Create the Linear project; paste the board, roles and guardrails from this file into its description; create the `Role` label group and the `Loop`, `Needs approval`, `Blocked`, `PAUSE`, `Security`, `Dependency` labels if the workspace lacks them; create the pinned status issue with `PAUSE` on.
+2. Write the vision and releases document; the owner confirms it.
+3. Add the entry to `projects.json` with `"loop": false`.
+4. Run R0 by hand or through Runway (the preparation issue, the audits, grooming).
+5. Set `"loop": true`, remove `PAUSE`.
+
+## Where this came from
+
+Built on 2026-10-21 and 22 for Pumpkin Art (Linear project "Pumpkin Art loop", `P-BUI-8`), then lifted here on the owner's instruction that it is a process for every project, not one project's tooling. The older Runway Board CLI (`agents/`, `commands/`, `skills/`) is an earlier take on the same idea; the loop layer in `runway/` is the live one.
