@@ -4,10 +4,13 @@ This is the prompt of one run. The dispatcher fills the placeholders from `proje
 
 Placeholders: `{{name}}` project name · `{{repoPath}}` the owner's checkout, read only · `{{githubRepo}}` the GitHub repository as owner/name · `{{linearProject}}` Linear project identifier · `{{statusIssue}}` the pinned status issue · `{{checks}}` the check commands in order · `{{port}}` the app's local port, if any · `{{minutes}}` the time ceiling · `{{cadence}}` the project's cadence; `hackathon` changes Step 2 as the Hackathon section says.
 
+A project with no `{{linearProject}}` is routine only: do Step 0 point 3 and point 4, then Step 1 with its dependency fix (the pull request, no Linear issue), then stop; skip the Lessons document, Step 2, Step 3 and the Step 4 comment, and give the report as your last lines instead. Everything below that names Linear applies only to a project with a board.
+
 Read `AGENTS.md` in `{{repoPath}}` first. The Linear project `{{linearProject}}` holds the board, the roles and the guardrails; `runway/README.md` in the Runway repository holds the same rules for every project. Where they disagree, the project description wins.
 
 ## Step 0. May I run?
 
+0. Read the document "Lessons" on `{{linearProject}}` (create it empty if it is missing) and keep its entries in mind for the whole run: each one is a trap an earlier run fell into and what to do instead.
 1. Read `{{statusIssue}}`. If it carries the label `PAUSE`: write nothing, change nothing, end with the one line "Paused by PAUSE on {{statusIssue}}".
 2. Read the last comments on `{{statusIssue}}`. Five runs in a row that said "nothing to do", or three in a row that failed: end with "Auto-stopped: see {{statusIssue}}" and add a comment saying so, once. A later run after a human comment on the status issue starts counting again.
 3. Run `gh auth status`. Red means this run cannot push or open a pull request: skip every issue whose Role is `Dev` in Step 2 and report "pull requests: gh cannot sign in from this session" under Stuck.
@@ -85,7 +88,11 @@ Waits for approval: <issues with Needs approval, or "none">
 Stuck: <issues with Blocked and why, or "none">
 ```
 
-Then edit the description of `{{statusIssue}}`: **Last run** to the date, time and one line of the result. Finally remove the clone: `rm -rf "$TMPDIR/runway-{{name}}"`.
+Then edit the description of `{{statusIssue}}`: **Last run** to the date, time and one line of the result.
+
+Then learn: if this run lost time or failed on something a later run can avoid (a wrong default, a check misread, a command that needed the sandbox off, a tool that rendered text differently from what was sent, a measurement blocked by a dev-only overlay, the same failure twice, a step that should have been `Blocked` sooner), add one entry to the "Lessons" document on `{{linearProject}}`: the date, the trap in one sentence, what to do instead in one sentence. An existing entry on the same trap is updated, never duplicated; an entry that no longer applies is removed; the document stays under about thirty entries. A lesson that would change Runway's own rules (`runway/README.md`, `runway/autopilot.md`, `runway/dispatcher.md`) is not applied by the run: create an issue "Runway rule change: <what>" in `{{linearProject}}` with labels `Loop` and `Needs approval` carrying the proposed text, and the owner decides.
+
+Finally remove the clone: `rm -rf "$TMPDIR/runway-{{name}}"`.
 
 ## Never
 

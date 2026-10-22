@@ -19,7 +19,8 @@ Runway keeps a software project healthy and moves its backlog forward without th
 3. **Roles, one step per run.** Each issue carries a `Role` label: UX research (asks the owner, reproduces, attaches a screenshot), PM (brief, done condition, release, protected zone or not), Design (screen spec), Dev (one issue, one branch, one pull request, about 200 lines), QA (runs the checks, clicks through, screenshots, pass or fail). A run does one role step on one issue and hands it to the next role.
 4. **Two tiers of change.** Done on its own: anything with a check that fails without it, dependency and security updates with green tests, bug fixes with a reproducing test. Proposal only (`Needs approval`): protected zones such as sign-in, migrations, deploy, CI config, agent rules.
 5. **No questions in this mode.** Where an issue has open questions, Runway writes a default on the issue and builds with it; the owner changes it in the weekly review. Only secrets and owner-only settings are reported as blocked.
-6. **Report, do not narrate.** One comment per run on the status issue: did, waits for approval, stuck. The status issue's description holds last run and token use. The owner reads that issue and the `Needs approval` filter, not pull requests.
+6. **Report, do not narrate.** One comment per run on the status issue: did, waits for approval, stuck. The status issue's description holds the last run. The owner reads that issue and the `Needs approval` filter, not pull requests.
+7. **Learn from its own mistakes.** Each project has a "Lessons" document on its Linear project: every run reads it before working and, when it lost time or failed on something avoidable, adds or updates one entry (date, the trap, what to do instead). The next run follows those entries, so the same trap is not hit twice. A lesson that would change Runway's own rules is proposed as a `Needs approval` issue, never applied by a run; the owner decides, and the rule files change only by hand.
 
 ## Guardrails (every project, every run)
 
@@ -36,6 +37,11 @@ Runway keeps a software project healthy and moves its backlog forward without th
 11. `PAUSE` on the status issue stops the project; the owner adds or removes it.
 12. Five idle runs or three failed runs in a row: the project auto-stops and says so.
 13. Every command runs in a temporary clone of `main`; the owner's checkout is read only and is never changed.
+
+## Two kinds of project
+
+- **With a board** (a Linear project and a status issue in the registry): only for an app the owner reviews himself. The full process above, roles, releases, audits, one issue per role step, report on the status issue. Linear exists for the owner's eyes, not for Runway's bookkeeping.
+- **Routine only** (no `linearProject` in the registry): a background job the owner does not review issue by issue, so it needs no board. Runway manages it itself: the pull request is the record of a change, the run's last lines are the report. Each run clones `main`, runs the checks, and opens a pull request for a dependency fix with green checks; nothing else, and nothing on Linear. `"loop": false` is its pause switch, and the dispatcher keeps its last-run time in `/tmp/claude/runway/last-run.json`. When such a project needs more than routine (bugs to track, work to hand between roles) and the owner still does not want to review it, the board goes on GitHub Issues of that repository, not on Linear; that mode is written the day a project needs it. Switching a project to the full process means adding the Linear board as "Adding a project" says.
 
 ## Cadence modes and what they cost
 

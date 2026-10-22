@@ -33,6 +33,24 @@
     "cadence": "hackathon",
     "loop": true
   },
+  "phanton-studio": {
+    "name": "Phanton Studio",
+    "description": "Canvas for AI architectural image generation; pnpm monorepo (apps/canvas, packages). Routine only: no Linear board",
+    "techStack": "Next.js 16 / React 19 / Supabase / Gemini",
+    "githubRepo": "builtbysang/phanton-studio",
+    "repoPath": "/Users/Sang/Workspace/repos/phanton-studio",
+    "checks": [
+      "pnpm install --frozen-lockfile",
+      "pnpm lint",
+      "pnpm test",
+      "pnpm build",
+      "pnpm audit --audit-level=high"
+    ],
+    "port": 3456,
+    "minutes": 40,
+    "cadence": "weekly",
+    "loop": false
+  },
   "wealth-next": {
     "name": "Wealth Next",
     "description": "Vietnamese personal finance & asset tracking app",
