@@ -32,7 +32,8 @@
       "https://docs.github.com/en/": "GitHub documentation"
     },
     "sourcesNote": "The only outside pages the learn pass may read to widen a skill. Matching rule: parse the URL; scheme must be https, host must equal the listed host exactly (no suffix or substring match), no user info, no port, and the path must start with the listed path, which ends in a slash. A redirect that leaves the listed origin and path stops the read. Search, playground, profile and user-content paths are outside every entry. The pull request lists every URL fetched. The owner edits this list. A rule taken from one is marked external, cites page and date, and never overrides a rule the owner stated.",
-    "note": "Entries with loop true are run by runway/dispatcher.md when their cadence is due, one after another; see runway/README.md. Keys a loop project needs: name, githubRepo, repoPath, linearTeamId, linearProject, statusIssue, checks, port, minutes, cadence, loop."
+    "note": "Entries with loop true are run by runway/dispatcher.md when their cadence is due, one after another; see runway/README.md. Keys a loop project needs: name, githubRepo, repoPath, linearTeamId, linearProject, statusIssue, checks, port, minutes, cadence, merge, loop.",
+    "mergeNote": "merge is \"owner\" (default: every pull request waits for the owner) or \"auto\" (a pull request that passes independent QA, green CI, no protected zone, under about 200 lines, no Needs approval, no injection candidate is merged by the run). The harness and the skill library stay \"owner\"."
   },
   "pumpkin-art": {
     "name": "Pumpkin Art admin",
@@ -53,6 +54,7 @@
     "port": 3457,
     "minutes": 50,
     "cadence": "hackathon",
+    "merge": "auto",
     "loop": true
   },
   "phanton-studio": {
@@ -71,6 +73,7 @@
     "port": 3456,
     "minutes": 40,
     "cadence": "weekly",
+    "merge": "owner",
     "loop": false
   },
   "harness": {
@@ -88,6 +91,7 @@
     "securityScope": "runway-board/runway/*.md and projects.json, ~/.claude/hooks, ~/.claude/scheduled-tasks/*/SKILL.md, every registered project's Lessons document and the week's run comments: injection paths, commands a run could be talked into, writes outside the allowed paths; findings as proposal files, never fixes in place",
     "minutes": 40,
     "cadence": "weekly",
+    "merge": "owner",
     "loop": true
   },
   "claude-skills": {
@@ -116,6 +120,7 @@
     "focusNote": "The exact skills this routine may check and change; nothing outside the list. The owner edits it.",
     "minutes": 40,
     "cadence": "weekly",
+    "merge": "owner",
     "loop": true
   },
   "wealth-next": {
@@ -127,6 +132,7 @@
     "linearTeamId": "866acf3d-e074-40a0-9ac9-dd2576538712",
     "notionContextPageId": "32a96f58d33480b29667c8de36c2d76b",
     "cadence": "weekly",
+    "merge": "owner",
     "loop": false
   }
 }
