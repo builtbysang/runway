@@ -51,6 +51,36 @@
     "cadence": "weekly",
     "loop": false
   },
+  "harness": {
+    "name": "Agent harness (agent-kit)",
+    "description": "Hooks, rules, templates and the self-improve tools behind every Claude session on this Mac. Routine only: doctor, then tune proposals as a pull request",
+    "githubRepo": "builtbysang/agent-kit",
+    "repoPath": "/Users/Sang/Workspace/repos/agent-kit",
+    "checks": [
+      "./doctor.sh"
+    ],
+    "improve": [
+      "tune"
+    ],
+    "minutes": 40,
+    "cadence": "weekly",
+    "loop": true
+  },
+  "claude-skills": {
+    "name": "Claude skills",
+    "description": "The skill library at ~/.claude/skills. Routine only: every SKILL.md passes the skill-authoring checker",
+    "githubRepo": "builtbysang/claude-skills",
+    "repoPath": "/Users/Sang/.claude/skills",
+    "checks": [
+      "python3 skill-authoring/check.py $(ls -d */ | grep -v '^\\.' )"
+    ],
+    "improve": [
+      "skill-authoring"
+    ],
+    "minutes": 40,
+    "cadence": "weekly",
+    "loop": true
+  },
   "wealth-next": {
     "name": "Wealth Next",
     "description": "Vietnamese personal finance & asset tracking app",
