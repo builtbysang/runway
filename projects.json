@@ -13,7 +13,9 @@
     "skills": [
       "tune",
       "skill-authoring",
-      "learn"
+      "learn",
+      "untrusted-content",
+      "security-review"
     ],
     "skillsNote": "The only skills a Runway run may invoke, by name under ~/.claude/skills. The owner edits this list; a run never adds to it, and an improve entry naming a skill outside it is skipped and reported.",
     "note": "Entries with loop true are run by runway/dispatcher.md when their cadence is due, one after another; see runway/README.md. Keys a loop project needs: name, githubRepo, repoPath, linearTeamId, linearProject, statusIssue, checks, port, minutes, cadence, loop."
@@ -66,8 +68,10 @@
       "./doctor.sh"
     ],
     "improve": [
-      "tune"
+      "tune",
+      "security-review"
     ],
+    "securityScope": "runway-board/runway/*.md and projects.json, ~/.claude/hooks, ~/.claude/scheduled-tasks/*/SKILL.md, every registered project's Lessons document and the week's run comments: injection paths, commands a run could be talked into, writes outside the allowed paths; findings as proposal files, never fixes in place",
     "minutes": 40,
     "cadence": "weekly",
     "loop": true
