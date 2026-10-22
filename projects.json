@@ -10,6 +10,12 @@
       "biweekly": "14 days",
       "hackathon": "always due, no time limit: each run works issue after issue until the board is empty or PAUSE is set. Warning: the Mac and the model bill run without a ceiling; say so to the owner when switching a project to it"
     },
+    "skills": [
+      "tune",
+      "skill-authoring",
+      "learn"
+    ],
+    "skillsNote": "The only skills a Runway run may invoke, by name under ~/.claude/skills. The owner edits this list; a run never adds to it, and an improve entry naming a skill outside it is skipped and reported.",
     "note": "Entries with loop true are run by runway/dispatcher.md when their cadence is due, one after another; see runway/README.md. Keys a loop project needs: name, githubRepo, repoPath, linearTeamId, linearProject, statusIssue, checks, port, minutes, cadence, loop."
   },
   "pumpkin-art": {
@@ -75,8 +81,21 @@
       "python3 skill-authoring/check.py $(ls -d */ | grep -v '^\\.' )"
     ],
     "improve": [
-      "skill-authoring"
+      "skill-authoring",
+      "learn"
     ],
+    "focus": [
+      "ui-taste",
+      "ui-screen",
+      "ui-typo",
+      "ds-policy",
+      "design-harness",
+      "grain-ui",
+      "figma-exec",
+      "figma-naming",
+      "writing-taste"
+    ],
+    "focusNote": "The design skill set and the harness around it. learn updates only these skills, from the week's sessions; the owner edits this list.",
     "minutes": 40,
     "cadence": "weekly",
     "loop": true

@@ -27,4 +27,8 @@ For each due project: read `/Users/Sang/Workspace/repos/runway-board/runway/auto
 
 End with one line per project: ran (on which model), skipped (PAUSE or not due), or stopped at which step and why.
 
+## 4. Names
+
+Every session that belongs to Runway is titled `RW(<mode>)-<project key>`, so the owner's sidebar shows at a glance what runs and on what: the mode is the cadence (`hackathon`, `weekly`, `daily`, `hourly`, and so on) or `trial` for a run by hand that switches nothing on, and the project key is the entry's key in `projects.json`. The scheduled tick itself is `RW(tick)`. A run started by hand from another session is renamed the same way before it starts.
+
 Never work two projects at once, never write on Linear outside what the autopilot says, and never ask the owner anything.

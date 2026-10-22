@@ -7,7 +7,7 @@ Runway keeps a software project healthy and moves its backlog forward without th
 | Piece | Where | What it is |
 |---|---|---|
 | Registry | `projects.json` | One entry per project: repo path, GitHub repo, Linear project, status issue, checks, loop on or off |
-| Dispatcher | `runway/dispatcher.md` | The prompt of the scheduled task "Runway": reads the registry and runs the autopilot once per project, one after another, in that session |
+| Dispatcher | `runway/dispatcher.md` | The prompt of the scheduled task `RW(tick)`: reads the registry and runs the autopilot once per due project, one after another, in that session. Every Runway session is titled `RW(<mode>)-<project key>` |
 | Autopilot | `runway/autopilot.md` | The prompt of one run on one project: may I run, routine health, one issue, one role step, report |
 | Board | Linear, one project per repository | Backlog is the inbox; roles and releases are labels and milestones; the status issue is the dashboard |
 | Proof | the repository's CI | Build, lint, tests on every pull request; a change without a check that fails without it is a proposal, not a change |
@@ -30,7 +30,7 @@ Runway keeps a software project healthy and moves its backlog forward without th
 4. Every change ships with a check that fails without it.
 5. The same failure twice in a row: stop, comment, `Blocked`.
 6. Protected zones are proposal only.
-7. No new dependency, no new rule or skill file, delete nothing that was there before.
+7. No new dependency, no new rule or skill file, delete nothing that was there before. A run invokes only the skills the owner lists in `_runway.skills` of `projects.json`.
 8. About 200 changed lines per pull request; bigger work is split.
 9. Before adding anything, show it does not already exist.
 10. A time ceiling per run; at the ceiling, stop and report.
@@ -41,7 +41,7 @@ Runway keeps a software project healthy and moves its backlog forward without th
 ## Two kinds of project
 
 - **With a board** (a Linear project and a status issue in the registry): only for an app the owner reviews himself. The full process above, roles, releases, audits, one issue per role step, report on the status issue. Linear exists for the owner's eyes, not for Runway's bookkeeping.
-- **Routine only** (no `linearProject` in the registry): a background job the owner does not review issue by issue, so it needs no board. Runway manages it itself: the pull request is the record of a change, the run's last lines are the report. An entry may name `improve` skills (for example `tune` for the harness): the run follows them in proposal mode and ships the proposals as a pull request, never applying them. This is how the harness and the skills themselves get a routine: registered as routine-only projects, checked and improved on a cadence, with the owner merging. Each run clones `main`, runs the checks, and opens a pull request for a dependency fix with green checks; nothing else, and nothing on Linear. `"loop": false` is its pause switch, and the dispatcher keeps its last-run time in `/tmp/claude/runway/last-run.json`. When such a project needs more than routine (bugs to track, work to hand between roles) and the owner still does not want to review it, the board goes on GitHub Issues of that repository, not on Linear; that mode is written the day a project needs it. Switching a project to the full process means adding the Linear board as "Adding a project" says.
+- **Routine only** (no `linearProject` in the registry): a background job the owner does not review issue by issue, so it needs no board. Runway manages it itself: the pull request is the record of a change, the run's last lines are the report. An entry may name `improve` skills (for example `tune` for the harness): the run follows them in proposal mode and ships the proposals as a pull request, never applying them. This is how the harness and the skills themselves get a routine: registered as routine-only projects, checked and improved on a cadence, with the owner merging. The design skill set (`ui-taste`, `ui-screen`, `ui-typo`, `ds-policy`, `design-harness`, `grain-ui`, `figma-exec`, `figma-naming`, `writing-taste`) is the `focus` of the skill-library entry: every week `learn` reads the sessions since the last run and proposes the corrections they contain as rule changes to those skills, shipped as a pull request. Each run clones `main`, runs the checks, and opens a pull request for a dependency fix with green checks; nothing else, and nothing on Linear. `"loop": false` is its pause switch, and the dispatcher keeps its last-run time in `/tmp/claude/runway/last-run.json`. When such a project needs more than routine (bugs to track, work to hand between roles) and the owner still does not want to review it, the board goes on GitHub Issues of that repository, not on Linear; that mode is written the day a project needs it. Switching a project to the full process means adding the Linear board as "Adding a project" says.
 
 ## Cadence modes and what they cost
 
