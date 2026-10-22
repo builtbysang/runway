@@ -73,12 +73,12 @@
     "loop": true
   },
   "claude-skills": {
-    "name": "Claude skills",
-    "description": "The skill library at ~/.claude/skills. Routine only: every SKILL.md passes the skill-authoring checker",
+    "name": "Design skills",
+    "description": "The design skill set in ~/.claude/skills, named in focus. Routine only: those skills pass the skill-authoring checker and get the week's corrections; the rest of the library is not touched",
     "githubRepo": "builtbysang/claude-skills",
     "repoPath": "/Users/Sang/.claude/skills",
     "checks": [
-      "python3 skill-authoring/check.py $(ls -d */ | grep -v '^\\.' )"
+      "python3 skill-authoring/check.py ui-taste ui-screen ui-typo ds-policy design-harness grain-ui figma-exec figma-naming writing-taste"
     ],
     "improve": [
       "skill-authoring",
@@ -95,7 +95,7 @@
       "figma-naming",
       "writing-taste"
     ],
-    "focusNote": "The design skill set and the harness around it. learn updates only these skills, from the week's sessions; the owner edits this list.",
+    "focusNote": "The exact skills this routine may check and change; nothing outside the list. The owner edits it.",
     "minutes": 40,
     "cadence": "weekly",
     "loop": true
