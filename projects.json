@@ -18,6 +18,19 @@
       "security-review"
     ],
     "skillsNote": "The only skills a Runway run may invoke, by name under ~/.claude/skills. The owner edits this list; a run never adds to it, and an improve entry naming a skill outside it is skipped and reported.",
+    "sources": {
+      "developer.apple.com/design/human-interface-guidelines": "Apple Human Interface Guidelines",
+      "m3.material.io": "Material Design 3",
+      "www.nngroup.com/articles": "Nielsen Norman Group research articles",
+      "www.w3.org/WAI": "W3C accessibility guidelines (WCAG, ARIA patterns)",
+      "developer.mozilla.org": "MDN web platform documentation",
+      "web.dev": "Google web.dev guidance",
+      "nextjs.org/docs": "Next.js documentation",
+      "supabase.com/docs": "Supabase documentation",
+      "playwright.dev/docs": "Playwright documentation",
+      "docs.github.com": "GitHub documentation"
+    },
+    "sourcesNote": "The only outside sources the learn pass may read to widen a skill, as host plus path prefix. The owner edits this list. A rule taken from one is marked external, cites page and date, and never overrides a rule the owner stated.",
     "note": "Entries with loop true are run by runway/dispatcher.md when their cadence is due, one after another; see runway/README.md. Keys a loop project needs: name, githubRepo, repoPath, linearTeamId, linearProject, statusIssue, checks, port, minutes, cadence, loop."
   },
   "pumpkin-art": {
