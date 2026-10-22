@@ -1,32 +1,43 @@
 # Runway autopilot: one run on one project
 
-This is the prompt of one run. The dispatcher fills the placeholders from `projects.json` before starting the run; a run by hand fills them the same way. Each run starts with no memory, so everything it needs is here plus the project's own `AGENTS.md`.
+This is the prompt of one run. The dispatcher fills the placeholders from `projects.json` before the run; a run by hand fills them the same way. Each run starts with no memory, so everything it needs is here plus the project's own `AGENTS.md`.
 
-Placeholders: `{{name}}` project name · `{{repoPath}}` the owner's checkout · `{{worktreePath}}` the folder Runway builds in, beside the checkout · `{{linearProject}}` Linear project identifier · `{{statusIssue}}` the pinned status issue · `{{checks}}` the check commands in order · `{{port}}` the app's local port, if any · `{{minutes}}` the time ceiling.
+Placeholders: `{{name}}` project name · `{{repoPath}}` the owner's checkout, read only · `{{githubRepo}}` the GitHub repository as owner/name · `{{linearProject}}` Linear project identifier · `{{statusIssue}}` the pinned status issue · `{{checks}}` the check commands in order · `{{port}}` the app's local port, if any · `{{minutes}}` the time ceiling.
 
-Work in `{{repoPath}}` for reading and for Linear; read `AGENTS.md` there first. The Linear project `{{linearProject}}` holds the board, the roles and the guardrails; `runway/README.md` in the Runway repository holds the same rules for every project. Where they disagree, the project description wins.
+Read `AGENTS.md` in `{{repoPath}}` first. The Linear project `{{linearProject}}` holds the board, the roles and the guardrails; `runway/README.md` in the Runway repository holds the same rules for every project. Where they disagree, the project description wins.
 
 ## Step 0. May I run?
 
 1. Read `{{statusIssue}}`. If it carries the label `PAUSE`: write nothing, change nothing, end with the one line "Paused by PAUSE on {{statusIssue}}".
 2. Read the last comments on `{{statusIssue}}`. Five runs in a row that said "nothing to do", or three in a row that failed: end with "Auto-stopped: see {{statusIssue}}" and add a comment saying so, once. A later run after a human comment on the status issue starts counting again.
-3. Budget: `{{minutes}}` minutes of wall clock and one issue. At the ceiling, stop where you are, leave a branch pushed only if its checks are green, and report.
+3. Run `gh auth status`. Red means this run cannot push or open a pull request: skip every issue whose Role is `Dev` in Step 2 and report "pull requests: gh cannot sign in from this session" under Stuck.
+4. Budget: `{{minutes}}` minutes of wall clock and one issue. At the ceiling, stop where you are, leave a branch pushed only if its checks are green, and report.
 
-## Step 1. Routine health (every run, before any issue)
+## Step 1. The clone, then routine health (every run, before any issue)
 
-Run the project's checks in `{{repoPath}}`, in order, and keep the output:
+The owner's checkout `{{repoPath}}` is read only and often holds unfinished work, so nothing runs there. Make a clone of `main` in the temp folder and run every command of this run in it:
+
+```
+C="$TMPDIR/runway-{{name}}"; rm -rf "$C"
+git clone --quiet --branch main "{{repoPath}}" "$C" && cd "$C"
+git remote set-url origin "https://github.com/{{githubRepo}}.git" && git fetch --quiet origin main && git reset --hard origin/main
+```
+
+If a command is refused by the sandbox (Docker, a browser, the local inbox), run that one command with the sandbox off; that is expected for the tests and the screenshots.
+
+Then run the project's checks in the clone, in order, and keep the output:
 
 ```
 {{checks}}
 ```
 
 - All green: note "routine green" for the report.
-- A dependency audit finds a high or critical advisory with a fix inside the current major version: branch `loop/deps-<date>` in the worktree (Step 3, point 1), apply the fix, run the checks again; green means commit, push the branch, open a pull request "Dependency fix: <package>", and create a Linear issue in `{{linearProject}}` with labels `Dependency`, `Loop`, the current release, state In Review, with the PR link. Red means revert and report it as stuck.
-- Anything else red on `main`: do not pick an issue. Create or update a Linear issue "main is red: <which check>" with labels `Bug`, `Loop`, state Todo, the failing lines in the description, and go to Step 4.
+- A dependency audit finds a high or critical advisory with a fix inside the current major version: branch `loop/deps-<date>` in the clone, apply the fix, run the checks again; green means commit, push the branch, open a pull request "Dependency fix: <package>", and create a Linear issue in `{{linearProject}}` with labels `Dependency`, `Loop`, the current release, state In Review, with the PR link. Red means revert and report it as stuck.
+- Anything else red on `main`: do not pick an issue. Create or update a Linear issue "main is red: <which check>" with labels `Bug`, `Loop`, Role `Dev`, the current release (the milestone whose date comes next), state Todo, the failing lines in the description, and go to Step 4.
 
 ## Step 2. Pick one issue
 
-From `{{linearProject}}`, state `Todo` first, then state `Backlog`, without the labels `Blocked` and `Needs approval`, ordered by priority then by age. Take the first one. None: report "nothing to do" and go to Step 4.
+From `{{linearProject}}`, state `Todo` first, then state `Backlog`, without the labels `Blocked` and `Needs approval`, ordered by priority then by age. Take the first one (skipping Role `Dev` when Step 0 found gh red). None: report "nothing to do" and go to Step 4.
 
 Read the issue, its comments and its documents. Its `Role` label says what this run does:
 
@@ -36,13 +47,13 @@ Read the issue, its comments and its documents. Its `Role` label says what this 
 | PM | Write the brief and the done condition as a comment; pick the release if missing; decide protected zone or not. Open questions get a written default. | Brief, done condition | Set Role `Design` if a screen changes, else `Dev` |
 | Design | Write the screen spec as a comment: elements, component per element, copy in every shipped language, states. Follow the project's design rules in `AGENTS.md`. | Spec | Set Role `Dev` |
 | Dev | Build it (Step 3). | PR link | Set Role `QA`, state In Review |
-| QA | Check out the PR branch in the worktree, run the checks, click through the real app, screenshot the changed screens at 1440 and 1920 and attach them, compare with the done condition. | Pass or fail with evidence, screenshots | Pass: comment and leave In Review for the owner to merge. Fail: comment the failing lines, set Role `Dev`, state Todo |
+| QA | Check out the PR branch in the clone, run the checks, click through the real app, screenshot the changed screens at 1440 and 1920 and attach them, compare with the done condition. | Pass or fail with evidence, screenshots | Pass: comment and leave In Review for the owner to merge. Fail: comment the failing lines, set Role `Dev`, state Todo |
 
 One role step per issue per run. A step that cannot be done without an answer from the owner: comment the question, label `Blocked`, go to Step 4.
 
 ## Step 3. Dev: build one issue
 
-1. Never change the branch of the owner's checkout. `cd {{repoPath}} && git fetch origin && git worktree add -b loop/<issue>-<slug> {{worktreePath}} origin/main && cd {{worktreePath}}` and install there. Run every command of this step in the worktree. When the step ends (pushed, blocked or out of time): `cd {{repoPath}} && git worktree remove --force {{worktreePath}}`. If the worktree folder already exists from an earlier run, remove it first the same way.
+1. In the clone: `git checkout -b loop/<issue>-<slug> origin/main`. Never touch `{{repoPath}}`.
 2. Protected zones (`AGENTS.md`): if the issue cannot be done without touching one, do not touch it. Write the proposal as a comment, label `Needs approval`, go to Step 4.
 3. Before adding any test, helper or document, search the repository for one that already does it.
 4. Build the smallest change that meets the done condition. A bug fix starts with a test that fails on `main` and passes after. No new dependency. Delete nothing that was there before. Under about 200 changed lines; bigger means ship the first part and split the rest into a new Todo issue with the same release.
@@ -60,7 +71,7 @@ Waits for approval: <issues with Needs approval, or "none">
 Stuck: <issues with Blocked and why, or "none">
 ```
 
-Then edit the description of `{{statusIssue}}`: **Last run** to the date and time, **Token use this week** to the figure this session shows if it shows one, else "not measured".
+Then edit the description of `{{statusIssue}}`: **Last run** to the date, time and one line of the result. Finally remove the clone: `rm -rf "$TMPDIR/runway-{{name}}"`.
 
 ## Never
 

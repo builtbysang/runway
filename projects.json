@@ -1,17 +1,15 @@
 {
-  "wealth-next": {
-    "linearTeamId": "866acf3d-e074-40a0-9ac9-dd2576538712",
-    "githubRepo": "builtbysang/wealth-next",
-    "localRepoPath": "/Users/Sang/Claude Code/wealth-next",
-    "description": "Vietnamese personal finance & asset tracking app",
-    "techStack": "Next.js 15 / TypeScript / Tailwind CSS 4 / Supabase",
-    "notionContextPageId": "32a96f58d33480b29667c8de36c2d76b",
-    "loop": false
-  },
   "_runway": {
-    "maxParallel": 2,
-    "cadence": "every 4 hours",
-    "note": "Entries with loop true are dispatched by runway/dispatcher.md; see runway/README.md"
+    "cadences": {
+      "half-hourly": "30 minutes",
+      "hourly": "1 hour",
+      "few-a-day": "4 hours",
+      "daily": "24 hours",
+      "4-a-week": "42 hours",
+      "weekly": "7 days",
+      "biweekly": "14 days"
+    },
+    "note": "Entries with loop true are run by runway/dispatcher.md when their cadence is due, one after another; see runway/README.md. Keys a loop project needs: name, githubRepo, repoPath, linearTeamId, linearProject, statusIssue, checks, port, minutes, cadence, loop."
   },
   "pumpkin-art": {
     "name": "Pumpkin Art admin",
@@ -19,7 +17,6 @@
     "techStack": "Next.js 16 / React 19 / Supabase / grain-ui",
     "githubRepo": "builtbysang/pumpkin-art",
     "repoPath": "/Users/Sang/Workspace/repos/pumpkin-art",
-    "worktreePath": "/Users/Sang/Workspace/repos/pumpkin-art-loop",
     "linearTeamId": "866acf3d-e074-40a0-9ac9-dd2576538712",
     "linearProject": "P-BUI-8",
     "statusIssue": "BUI-114",
@@ -32,6 +29,18 @@
     ],
     "port": 3457,
     "minutes": 40,
+    "cadence": "few-a-day",
     "loop": true
+  },
+  "wealth-next": {
+    "name": "Wealth Next",
+    "description": "Vietnamese personal finance & asset tracking app",
+    "techStack": "Next.js 15 / TypeScript / Tailwind CSS 4 / Supabase",
+    "githubRepo": "builtbysang/wealth-next",
+    "repoPath": "/Users/Sang/Claude Code/wealth-next",
+    "linearTeamId": "866acf3d-e074-40a0-9ac9-dd2576538712",
+    "notionContextPageId": "32a96f58d33480b29667c8de36c2d76b",
+    "cadence": "weekly",
+    "loop": false
   }
 }

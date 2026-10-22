@@ -6,8 +6,8 @@ Runway keeps a software project healthy and moves its backlog forward without th
 
 | Piece | Where | What it is |
 |---|---|---|
-| Registry | `projects.json` | One entry per project: repo path, GitHub repo, Linear project, status issue, cadence, loop on or off |
-| Dispatcher | `runway/dispatcher.md` | The prompt of the scheduled task "Runway": reads the registry and starts one run per project |
+| Registry | `projects.json` | One entry per project: repo path, GitHub repo, Linear project, status issue, checks, loop on or off |
+| Dispatcher | `runway/dispatcher.md` | The prompt of the scheduled task "Runway": reads the registry and runs the autopilot once per project, one after another, in that session |
 | Autopilot | `runway/autopilot.md` | The prompt of one run on one project: may I run, routine health, one issue, one role step, report |
 | Board | Linear, one project per repository | Backlog is the inbox; roles and releases are labels and milestones; the status issue is the dashboard |
 | Proof | the repository's CI | Build, lint, tests on every pull request; a change without a check that fails without it is a proposal, not a change |
@@ -35,7 +35,15 @@ Runway keeps a software project healthy and moves its backlog forward without th
 10. A time ceiling per run; at the ceiling, stop and report.
 11. `PAUSE` on the status issue stops the project; the owner adds or removes it.
 12. Five idle runs or three failed runs in a row: the project auto-stops and says so.
-13. Build in a separate git worktree; never change the branch of the owner's checkout.
+13. Every command runs in a temporary clone of `main`; the owner's checkout is read only and is never changed.
+
+## Cadence modes and what they cost
+
+Each project picks one cadence in `projects.json`: `half-hourly`, `hourly`, `few-a-day` (every 4 hours), `daily`, `4-a-week`, `weekly` or `biweekly`. The scheduled task fires at the finest cadence in use, and a tick runs only the projects that are due. The cadence also sets the cost: a project on an hourly or half-hourly cadence does its routine health on the cheapest model and its research, QA and build steps on the middle one, and takes judgment steps (PM, Design) once a day; a weekly project may spend the strong model on every step. The table is in `runway/dispatcher.md`.
+
+## What a scheduled run can and cannot do
+
+The scheduled task fires in a session with no project folder. It can read the repositories, Linear and GitHub, run commands in the temp folder, and hand a run to a subagent on a cheaper model; it cannot open other sessions, change its own model, or write under the owner's repository folders. So one tick runs the due projects one after another, each through a subagent on the model its cadence allows (or in the tick itself when a subagent is refused), and the clone in the temp folder is where everything happens. Commands the sandbox refuses (Docker, a browser, the local inbox) run with the sandbox off.
 
 ## Preparing a project (R0)
 
@@ -45,7 +53,7 @@ Before the loop is switched on: CI on the project's GitHub Actions with build, l
 
 1. Create the Linear project; paste the board, roles and guardrails from this file into its description; create the `Role` label group and the `Loop`, `Needs approval`, `Blocked`, `PAUSE`, `Security`, `Dependency` labels if the workspace lacks them; create the pinned status issue with `PAUSE` on.
 2. Write the vision and releases document; the owner confirms it.
-3. Add the entry to `projects.json` with `"loop": false`.
+3. Add the entry to `projects.json` with its cadence and `"loop": false`.
 4. Run R0 by hand or through Runway (the preparation issue, the audits, grooming).
 5. Set `"loop": true`, remove `PAUSE`.
 
