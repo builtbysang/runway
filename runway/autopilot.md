@@ -11,7 +11,7 @@ Read `AGENTS.md` in `{{repoPath}}` first. The Linear project `{{linearProject}}`
 1. Read `{{statusIssue}}`. If it carries the label `PAUSE`: write nothing, change nothing, end with the one line "Paused by PAUSE on {{statusIssue}}".
 2. Read the last comments on `{{statusIssue}}`. Five runs in a row that said "nothing to do", or three in a row that failed: end with "Auto-stopped: see {{statusIssue}}" and add a comment saying so, once. A later run after a human comment on the status issue starts counting again.
 3. Run `gh auth status`. Red means this run cannot push or open a pull request: skip every issue whose Role is `Dev` in Step 2 and report "pull requests: gh cannot sign in from this session" under Stuck.
-4. Budget: `{{minutes}}` minutes of wall clock and one issue (any number of issues when `{{cadence}}` is `hackathon`). At the ceiling, stop where you are, leave a branch pushed only if its checks are green, and report.
+4. Budget: `{{minutes}}` minutes of wall clock and one issue. At the ceiling, stop where you are, leave a branch pushed only if its checks are green, and report. When `{{cadence}}` is `hackathon` there is no ceiling and no issue limit: first edit the description of `{{statusIssue}}` to add the line **Running since** with the date and time, so the next tick does not start a second run on top of this one.
 
 ## Step 1. The clone, then routine health (every run, before any issue)
 
@@ -53,7 +53,7 @@ One role step per issue per run. A step that cannot be done without an answer fr
 
 ## Hackathon: keep going, and find the work yourself
 
-Only when `{{cadence}}` is `hackathon`. The run does not stop after one role step: when a step is done, go back to Step 2 and take the next issue, until the `{{minutes}}` ceiling. An issue just handed to the next role may be picked again in the same run, so one issue can travel from research to a reviewed pull request in one run; QA of a pull request still runs the checks and clicks through, it never passes on trust. Every guardrail still holds per issue: one branch and one pull request each, about 200 lines, the same failure twice means `Blocked`.
+Only when `{{cadence}}` is `hackathon`. The run does not stop after one role step and has no time limit: when a step is done, read `{{statusIssue}}` again (`PAUSE` ends the run at once, after the report), then go back to Step 2 and take the next issue. An issue just handed to the next role may be picked again in the same run, so one issue can travel from research to a reviewed pull request in one run; QA of a pull request still runs the checks and clicks through, it never passes on trust. Every guardrail still holds per issue: one branch and one pull request each, about 200 lines, the same failure twice means `Blocked`.
 
 When Step 2 finds nothing to pick, make work instead of stopping, in this order, then go back to Step 2:
 
@@ -63,7 +63,7 @@ When Step 2 finds nothing to pick, make work instead of stopping, in this order,
 
 Never invent a feature: new work comes from a check, an audit or a release goal, never from an idea of your own.
 
-Report once at the end (Step 4), one line per issue touched.
+Report once at the end (Step 4), one line per issue touched, and remove the **Running since** line from the description of `{{statusIssue}}`.
 
 ## Step 3. Dev: build one issue
 

@@ -8,7 +8,7 @@
       "4-a-week": "42 hours",
       "weekly": "7 days",
       "biweekly": "14 days",
-      "hackathon": "always due: every tick, and each run works issue after issue until its minutes run out"
+      "hackathon": "always due, no time limit: each run works issue after issue until the board is empty or PAUSE is set. Warning: the Mac and the model bill run without a ceiling; say so to the owner when switching a project to it"
     },
     "note": "Entries with loop true are run by runway/dispatcher.md when their cadence is due, one after another; see runway/README.md. Keys a loop project needs: name, githubRepo, repoPath, linearTeamId, linearProject, statusIssue, checks, port, minutes, cadence, loop."
   },

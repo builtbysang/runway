@@ -7,7 +7,7 @@ This is the prompt of the scheduled task "Runway" on the owner's Mac. The task f
 Read `/Users/Sang/Workspace/repos/runway-board/projects.json`. For every entry with `"loop": true`, in file order:
 
 1. Read its `statusIssue` on Linear. `PAUSE` on it means skip the project, writing nothing.
-2. Take the **Last run** date and time from the status issue's description. The project is due when that time is older than its `cadence` interval (the `_runway.cadences` table), or when there is no last run. Not due means skip it silently. Cadence `hackathon` is always due: the project runs every tick, and each run keeps working issue after issue until its `minutes` run out.
+2. Take the **Last run** date and time from the status issue's description. The project is due when that time is older than its `cadence` interval (the `_runway.cadences` table), or when there is no last run. Not due means skip it silently. Cadence `hackathon` is always due and has no time limit: the project runs every tick, and each run keeps working issue after issue until the board is empty or `PAUSE` is set. A hackathon run that is still going writes **Running since** in the status issue's description; when that line is there and younger than 6 hours, skip the project this tick so two runs never overlap (older than 6 hours means the run died: ignore the line and start).
 
 ## 2. Cost follows cadence
 
