@@ -11,7 +11,9 @@ Read `/Users/Sang/Workspace/repos/runway-board/projects.json`. For every entry w
 
 ## 2. Cost follows cadence
 
-A project that runs often must run cheap; a project that runs weekly can afford judgment. The cadence sets two things: the model the work goes to, and which role steps a tick may take.
+A project that runs often must run cheap; a project that runs weekly can afford judgment. The cadence sets two things: the model the work goes to, and which role steps a tick may take. Inside a run, the autopilot hands lookups, commands and mechanical edits to subagents a tier below the run's model, so the strong model pays only for judgment.
+
+Why three tiers: `haiku` is the cheapest and reads, runs and reports well but does not design or decide; `sonnet` builds reliably from a settled spec and reviews code; `opus` is for judgment: briefs, specs, rule text, hard debugging. The price gap between tiers is large, so a piece of work goes to the lowest tier that can do it and no higher.
 
 | Cadence | Routine health (Step 1) | UX research, QA, Dev steps | PM, Design steps |
 |---|---|---|---|
