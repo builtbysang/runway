@@ -23,8 +23,8 @@ Runway keeps a software project healthy and moves its backlog forward without th
 
 ## Guardrails (every project, every run)
 
-1. Work comes only from the board and the routine list (install, lint, build, tests, dependency and security scan). No self-invented features, no drive-by fixes.
-2. One issue, one branch, one pull request per run. Never push to `main`, never merge, never deploy, never touch `.env*`, never enter a credential.
+1. Work comes only from the board and the routine list (install, lint, build, tests, dependency and security scan); in hackathon mode also from a fresh audit, filed as issues first. No self-invented features, no drive-by fixes.
+2. One issue, one branch, one pull request per role step (hackathon mode chains role steps, each still on its own branch). Never push to `main`, never merge, never deploy, never touch `.env*`, never enter a credential.
 3. Reproduce before fixing; cannot reproduce means `Blocked` with a question.
 4. Every change ships with a check that fails without it.
 5. The same failure twice in a row: stop, comment, `Blocked`.
@@ -39,7 +39,7 @@ Runway keeps a software project healthy and moves its backlog forward without th
 
 ## Cadence modes and what they cost
 
-Each project picks one cadence in `projects.json`: `half-hourly`, `hourly`, `few-a-day` (every 4 hours), `daily`, `4-a-week`, `weekly` or `biweekly`. The scheduled task fires at the finest cadence in use, and a tick runs only the projects that are due. The cadence also sets the cost: a project on an hourly or half-hourly cadence does its routine health on the cheapest model and its research, QA and build steps on the middle one, and takes judgment steps (PM, Design) once a day; a weekly project may spend the strong model on every step. The table is in `runway/dispatcher.md`.
+Each project picks one cadence in `projects.json`: `half-hourly`, `hourly`, `few-a-day` (every 4 hours), `daily`, `4-a-week`, `weekly`, `biweekly` or `hackathon`. The scheduled task fires at the finest cadence in use, and a tick runs only the projects that are due. `hackathon` is the relentless mode: due on every tick, and each run works issue after issue until its minutes run out; when the board is empty it re-audits `main` and files what it finds, so set `minutes` just under the tick interval and expect the Mac to stay busy. The cadence also sets the cost: a project on an hourly or half-hourly cadence does its routine health on the cheapest model and its research, QA and build steps on the middle one, and takes judgment steps (PM, Design) once a day; a weekly project may spend the strong model on every step. The table is in `runway/dispatcher.md`.
 
 ## What a scheduled run can and cannot do
 

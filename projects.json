@@ -7,7 +7,8 @@
       "daily": "24 hours",
       "4-a-week": "42 hours",
       "weekly": "7 days",
-      "biweekly": "14 days"
+      "biweekly": "14 days",
+      "hackathon": "always due: every tick, and each run works issue after issue until its minutes run out"
     },
     "note": "Entries with loop true are run by runway/dispatcher.md when their cadence is due, one after another; see runway/README.md. Keys a loop project needs: name, githubRepo, repoPath, linearTeamId, linearProject, statusIssue, checks, port, minutes, cadence, loop."
   },
@@ -28,8 +29,8 @@
       "pnpm audit --audit-level=high"
     ],
     "port": 3457,
-    "minutes": 40,
-    "cadence": "few-a-day",
+    "minutes": 50,
+    "cadence": "hackathon",
     "loop": true
   },
   "wealth-next": {

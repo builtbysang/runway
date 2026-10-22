@@ -2,7 +2,7 @@
 
 This is the prompt of one run. The dispatcher fills the placeholders from `projects.json` before the run; a run by hand fills them the same way. Each run starts with no memory, so everything it needs is here plus the project's own `AGENTS.md`.
 
-Placeholders: `{{name}}` project name · `{{repoPath}}` the owner's checkout, read only · `{{githubRepo}}` the GitHub repository as owner/name · `{{linearProject}}` Linear project identifier · `{{statusIssue}}` the pinned status issue · `{{checks}}` the check commands in order · `{{port}}` the app's local port, if any · `{{minutes}}` the time ceiling.
+Placeholders: `{{name}}` project name · `{{repoPath}}` the owner's checkout, read only · `{{githubRepo}}` the GitHub repository as owner/name · `{{linearProject}}` Linear project identifier · `{{statusIssue}}` the pinned status issue · `{{checks}}` the check commands in order · `{{port}}` the app's local port, if any · `{{minutes}}` the time ceiling · `{{cadence}}` the project's cadence; `hackathon` changes Step 2 as the Hackathon section says.
 
 Read `AGENTS.md` in `{{repoPath}}` first. The Linear project `{{linearProject}}` holds the board, the roles and the guardrails; `runway/README.md` in the Runway repository holds the same rules for every project. Where they disagree, the project description wins.
 
@@ -11,7 +11,7 @@ Read `AGENTS.md` in `{{repoPath}}` first. The Linear project `{{linearProject}}`
 1. Read `{{statusIssue}}`. If it carries the label `PAUSE`: write nothing, change nothing, end with the one line "Paused by PAUSE on {{statusIssue}}".
 2. Read the last comments on `{{statusIssue}}`. Five runs in a row that said "nothing to do", or three in a row that failed: end with "Auto-stopped: see {{statusIssue}}" and add a comment saying so, once. A later run after a human comment on the status issue starts counting again.
 3. Run `gh auth status`. Red means this run cannot push or open a pull request: skip every issue whose Role is `Dev` in Step 2 and report "pull requests: gh cannot sign in from this session" under Stuck.
-4. Budget: `{{minutes}}` minutes of wall clock and one issue. At the ceiling, stop where you are, leave a branch pushed only if its checks are green, and report.
+4. Budget: `{{minutes}}` minutes of wall clock and one issue (any number of issues when `{{cadence}}` is `hackathon`). At the ceiling, stop where you are, leave a branch pushed only if its checks are green, and report.
 
 ## Step 1. The clone, then routine health (every run, before any issue)
 
@@ -50,6 +50,20 @@ Read the issue, its comments and its documents. Its `Role` label says what this 
 | QA | Check out the PR branch in the clone, run the checks, click through the real app, screenshot the changed screens at 1440 and 1920 and attach them, compare with the done condition. | Pass or fail with evidence, screenshots | Pass: comment and leave In Review for the owner to merge. Fail: comment the failing lines, set Role `Dev`, state Todo |
 
 One role step per issue per run. A step that cannot be done without an answer from the owner: comment the question, label `Blocked`, go to Step 4.
+
+## Hackathon: keep going, and find the work yourself
+
+Only when `{{cadence}}` is `hackathon`. The run does not stop after one role step: when a step is done, go back to Step 2 and take the next issue, until the `{{minutes}}` ceiling. An issue just handed to the next role may be picked again in the same run, so one issue can travel from research to a reviewed pull request in one run; QA of a pull request still runs the checks and clicks through, it never passes on trust. Every guardrail still holds per issue: one branch and one pull request each, about 200 lines, the same failure twice means `Blocked`.
+
+When Step 2 finds nothing to pick, make work instead of stopping, in this order, then go back to Step 2:
+
+1. Routine debt: a dependency fix held by a red check, or a `Blocked` issue whose blocker was a failing check that is now green.
+2. A fresh audit of current `main`, the one done longest ago of the three (UX on seeded data, UI at five widths with numbers from the DOM, motion), following the audit documents already on the board. Each new finding becomes an issue with a release, Role `UX research`, labels `Loop` and `Bug` or `Improvement`, a screenshot where it is visual; at most five per run, none that duplicates an open issue.
+3. Still nothing: report "nothing to do" and stop. Five such runs in a row auto-stop the project (Step 0).
+
+Never invent a feature: new work comes from a check, an audit or a release goal, never from an idea of your own.
+
+Report once at the end (Step 4), one line per issue touched.
 
 ## Step 3. Dev: build one issue
 
