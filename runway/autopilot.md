@@ -2,7 +2,7 @@
 
 This is the prompt of one run. The dispatcher fills the placeholders from `projects.json` before the run; a run by hand fills them the same way. Each run starts with no memory, so everything it needs is here plus the project's own `AGENTS.md`.
 
-Placeholders: `{{name}}` project name · `{{repoPath}}` the owner's checkout, read only · `{{githubRepo}}` the GitHub repository as owner/name · `{{linearProject}}` Linear project identifier · `{{statusIssue}}` the pinned status issue · `{{checks}}` the check commands in order · `{{port}}` the app's local port, if any · `{{minutes}}` the time ceiling · `{{cadence}}` the project's cadence; `hackathon` changes Step 2 as the Hackathon section says.
+Placeholders: `{{key}}` the entry's key in `projects.json`, used in paths · `{{name}}` project name · `{{repoPath}}` the owner's checkout, read only · `{{githubRepo}}` the GitHub repository as owner/name · `{{linearProject}}` Linear project identifier · `{{statusIssue}}` the pinned status issue · `{{checks}}` the check commands in order · `{{port}}` the app's local port, if any · `{{minutes}}` the time ceiling · `{{cadence}}` the project's cadence; `hackathon` changes Step 2 as the Hackathon section says.
 
 A project with no `{{linearProject}}` is routine only: do Step 0 point 3 and point 4, then Step 1 with its dependency fix (the pull request, no Linear issue), then the improve step below if the entry has one, then stop; skip the Lessons document, Step 2, Step 3 and the Step 4 comment, and give the report as your last lines instead. Everything below that names Linear applies only to a project with a board.
 
@@ -25,12 +25,12 @@ Read `AGENTS.md` in `{{repoPath}}` first.
 The owner's checkout `{{repoPath}}` is read only and often holds unfinished work, so nothing runs there. Make a clone of `main` in the temp folder and run every command of this run in it:
 
 ```
-C="$TMPDIR/runway-{{name}}"; rm -rf "$C"
+C="$TMPDIR/runway-{{key}}"; rm -rf "$C"
 git clone --quiet --branch main "{{repoPath}}" "$C" && cd "$C"
 git remote set-url origin "https://github.com/{{githubRepo}}.git" && git fetch --quiet origin main && git reset --hard origin/main
 ```
 
-If a command is refused by the sandbox (Docker, a browser, the local inbox), run that one command with the sandbox off; that is expected for the tests and the screenshots.
+If a command is refused by the sandbox (Docker, a browser, the local inbox), run that one command with the sandbox off; that is expected for the tests and the screenshots. With the sandbox off, `$TMPDIR` points elsewhere, so pass the clone's absolute path, never `$TMPDIR`, to those commands.
 
 Then run the project's checks in the clone, in order, and keep the output:
 
@@ -44,7 +44,7 @@ Then run the project's checks in the clone, in order, and keep the output:
 
 ## Step 2. Pick one issue
 
-From `{{linearProject}}`, state `Todo` first, then state `Backlog`, without the labels `Blocked` and `Needs approval`, ordered by priority then by age. Take the first one (skipping Role `Dev` when Step 0 found gh red). None: report "nothing to do" and go to Step 4.
+From `{{linearProject}}`: state `In Review` with Role `QA` first (a pull request waiting for its check), then state `Todo`, then state `Backlog`, without the labels `Blocked` and `Needs approval`, ordered by priority then by age. Take the first one (skipping Role `Dev` when Step 0 found gh red). None: report "nothing to do" and go to Step 4.
 
 Read the issue, its comments and its documents. Its `Role` label says what this run does:
 
@@ -96,7 +96,7 @@ Then edit the description of `{{statusIssue}}`: **Last run** to the date, time a
 
 Then learn: if this run lost time or failed on something a later run can avoid (a wrong default, a check misread, a command that needed the sandbox off, a tool that rendered text differently from what was sent, a measurement blocked by a dev-only overlay, the same failure twice, a step that should have been `Blocked` sooner), add one entry to the "Lessons" document on `{{linearProject}}`: the date, the trap in one sentence, what to do instead in one sentence. An existing entry on the same trap is updated, never duplicated; an entry that no longer applies is removed; the document stays under about thirty entries. A lesson that would change Runway's own rules (`runway/README.md`, `runway/autopilot.md`, `runway/dispatcher.md`) is not applied by the run: create an issue "Runway rule change: <what>" in `{{linearProject}}` with labels `Loop` and `Needs approval` carrying the proposed text, and the owner decides.
 
-Finally remove the clone: `rm -rf "$TMPDIR/runway-{{name}}"`.
+Finally remove the clone: `rm -rf "$TMPDIR/runway-{{key}}"`.
 
 ## Never
 

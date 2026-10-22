@@ -25,7 +25,7 @@ How to run on that model: hand the whole autopilot prompt (placeholders filled) 
 
 ## 3. Run
 
-For each due project: read `/Users/Sang/Workspace/repos/runway-board/runway/autopilot.md`, replace every placeholder with the entry's values (`name`, `repoPath`, `githubRepo`, `linearProject`, `statusIssue`, `checks` one per line, `port`, `minutes`, `cadence`), and have it followed from Step 0 to Step 4 before starting the next project.
+For each due project: read `/Users/Sang/Workspace/repos/runway-board/runway/autopilot.md`, replace every placeholder with the entry's values (`key` is the entry's key, then `name`, `repoPath`, `githubRepo`, `linearProject`, `statusIssue`, `checks` one per line, `port`, `minutes`, `cadence`), and have it followed from Step 0 to Step 4 before starting the next project.
 
 End with one line per project: ran (on which model), skipped (PAUSE or not due), or stopped at which step and why.
 
